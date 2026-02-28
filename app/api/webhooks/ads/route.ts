@@ -31,21 +31,8 @@ export async function POST(req: Request) {
         const apiKey = req.headers.get('x-api-key')?.trim();
         const expectedKey = process.env.WEBHOOK_API_KEY?.trim();
 
-        console.log('--- DEBUG WEBHOOK ---');
-        console.log('API Key recebida (comprimento):', apiKey?.length);
-        console.log('API Key esperada (configurada na Vercel):', expectedKey ? 'Configurada (OK)' : 'NÃO CONFIGURADA');
-
         if (!apiKey || apiKey !== expectedKey) {
-            const hasEnv = !!process.env.WEBHOOK_API_KEY;
-            return NextResponse.json({
-                error: 'Unauthorized',
-                debug: {
-                    env_variable_found: hasEnv,
-                    received_length: apiKey?.length || 0,
-                    expected_length: expectedKey?.length || 0,
-                    hint: 'Verifique se a KEY na Vercel se CHAMA exatamente WEBHOOK_API_KEY e o VALOR é 681049'
-                }
-            }, { status: 401 });
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
         // 2. Fazer o parse do payload recebido do Google Ads Script
