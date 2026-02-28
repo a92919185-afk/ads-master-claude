@@ -55,6 +55,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Faltam campos essenciais no payload' }, { status: 400 });
         }
 
+        // 2.5 Verificar se o Supabase Admin foi iniciado corretamente
+        if (!supabaseAdmin) {
+            return NextResponse.json({
+                error: 'Internal Configuration Error',
+                details: 'As variáveis SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não foram encontradas na Vercel.'
+            }, { status: 500 });
+        }
+
         // 3. Garantir que a Conta (Account) existe. Se não, criar
         const { data: accountData, error: accountError } = await supabaseAdmin
             .from('accounts')
