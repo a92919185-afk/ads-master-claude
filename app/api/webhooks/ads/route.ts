@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 // Utilizando service_role_key para o backend poder dar bypass no RLS e inserir/atualizar
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabaseAdmin = supabaseUrl && supabaseServiceKey ? createClient(supabaseUrl, supabaseServiceKey) : null as any;
+const supabaseAdmin = supabaseUrl && supabaseServiceKey ? createClient(supabaseUrl, supabaseServiceKey) : null;
 
 interface WebhookPayload {
     google_ads_account_id: string; // ID oriundo do Ads Script para ligar a conta
@@ -36,10 +36,17 @@ export async function POST(req: Request) {
         }
 
         // 2. Fazer o parse do payload recebido do Google Ads Script
-        const data: WebhookPayload = await req.json();
+        const rawPayload = await req.json();
+        // Lidar tanto com o array que o novo script envia, quanto old scripts q enviavam objeto único
+        const payloadArray: WebhookPayload[] = Array.isArray(rawPayload) ? rawPayload : [rawPayload];
 
-        if (!data.google_ads_account_id || !data.campaign_name || !data.date) {
-            return NextResponse.json({ error: 'Faltam campos essenciais no payload' }, { status: 400 });
+        if (payloadArray.length === 0) {
+            return NextResponse.json({ error: 'Payload vazio ou fora do formato esperado' }, { status: 400 });
+        }
+
+        // Validar pelo menos o primeiro item do array por segurança
+        if (!payloadArray[0].google_ads_account_id || !payloadArray[0].campaign_name || !payloadArray[0].date) {
+            return NextResponse.json({ error: 'Faltam campos essenciais no payload (account, campaign ou date)' }, { status: 400 });
         }
 
         // 2.5 Verificar se o Supabase Admin foi iniciado corretamente
@@ -51,66 +58,84 @@ export async function POST(req: Request) {
         }
 
         // 3. Garantir que a Conta (Account) existe. Se não, criar
-        const { data: accountData, error: accountError } = await supabaseAdmin
-            .from('accounts')
-            .select('id')
-            .eq('google_ads_account_id', data.google_ads_account_id)
-            .single();
+        // Cachear as contas no mapa durante esse request para evitar calls repetidas no DB
+        const uniqueAccounts: Record<string, string> = {};
 
-        let accountId = accountData?.id;
+        for (const pd of payloadArray) {
+            if (!uniqueAccounts[pd.google_ads_account_id]) {
+                const { data: accountData, error: accountError } = await supabaseAdmin
+                    .from('accounts')
+                    .select('id')
+                    .eq('google_ads_account_id', pd.google_ads_account_id)
+                    .single();
 
-        if (accountError && accountError.code === 'PGRST116') { // PGRST116: Nenhum registro retornado
-            const { data: newAccount, error: createError } = await supabaseAdmin
-                .from('accounts')
-                .insert({
-                    google_ads_account_id: data.google_ads_account_id,
-                    name: data.account_name || `Conta - ${data.google_ads_account_id}`,
-                })
-                .select('id')
-                .single();
+                let accountId = accountData?.id;
 
-            if (createError) throw createError;
-            accountId = newAccount.id;
-        } else if (accountError) {
-            throw accountError;
+                if (accountError && accountError.code === 'PGRST116') { // PGRST116: Nenhum registro retornado
+                    const { data: newAccount, error: createError } = await supabaseAdmin
+                        .from('accounts')
+                        .insert({
+                            google_ads_account_id: pd.google_ads_account_id,
+                            name: pd.account_name || `Conta - ${pd.google_ads_account_id}`,
+                        })
+                        .select('id')
+                        .single();
+
+                    if (createError) throw createError;
+                    accountId = newAccount.id;
+                } else if (accountError) {
+                    throw accountError;
+                }
+
+                // Armazenar localmente para os próximos
+                if (accountId) {
+                    uniqueAccounts[pd.google_ads_account_id] = accountId;
+                }
+            }
         }
 
-        // 4. Calcular O Lucro (Profit) Internamente e tratar números
-        const cost = Number(data.cost) || 0;
-        const conversion_value = Number(data.conversion_value) || 0;
-        const profit = conversion_value - cost;
-        const clicks = Number(data.clicks) || 0;
+        // 4. Preparar e Calcular o Profit dos blocos
+        const rowsToInsert = payloadArray.map(dataItem => {
+            const cost = Number(dataItem.cost) || 0;
+            const conversion_value = Number(dataItem.conversion_value) || 0;
+            const profit = conversion_value - cost;
+            const clicks = Number(dataItem.clicks) || 0;
+            const accId = uniqueAccounts[dataItem.google_ads_account_id];
 
-        // 5. Inserir ou Sobrescrever os dados no BD
+            return {
+                account_id: accId,
+                campaign_name: dataItem.campaign_name,
+                budget: dataItem.budget ? Number(dataItem.budget) : 0,
+                status: dataItem.status || 'UNKNOWN',
+                impressions: dataItem.impressions ? Number(dataItem.impressions) : 0,
+                clicks: clicks,
+                cost: cost,
+                conversions: dataItem.conversions ? Number(dataItem.conversions) : 0,
+                conversion_value: conversion_value,
+                profit: profit,
+                // Shares que adicionamos recentemente
+                search_absolute_top_impression_share: dataItem.search_absolute_top_impression_share ? Number(dataItem.search_absolute_top_impression_share) : 0,
+                search_top_impression_share: dataItem.search_top_impression_share ? Number(dataItem.search_top_impression_share) : 0,
+                search_impression_share: dataItem.search_impression_share ? Number(dataItem.search_impression_share) : 0,
+                target_cpa: dataItem.target_cpa ? Number(dataItem.target_cpa) : 0,
+                avg_target_cpa: dataItem.avg_target_cpa ? Number(dataItem.avg_target_cpa) : 0,
+                date: dataItem.date,
+            };
+        });
+
+        // 5. Inserir ou Sobrescrever os dados no BD em Lote
         // Utiliza a chave primária UPSERT baseada na UNIQUE(account_id, campaign_name, date)
         const { error: insertError } = await supabaseAdmin
             .from('campaign_metrics')
-            .upsert({
-                account_id: accountId,
-                campaign_name: data.campaign_name,
-                budget: data.budget ? Number(data.budget) : 0,
-                status: data.status || 'UNKNOWN',
-                impressions: data.impressions ? Number(data.impressions) : 0,
-                clicks: clicks,
-                cost: cost,
-                conversions: data.conversions ? Number(data.conversions) : 0,
-                conversion_value: conversion_value,
-                profit: profit,
-                search_absolute_top_impression_share: data.search_absolute_top_impression_share ? Number(data.search_absolute_top_impression_share) : 0,
-                search_top_impression_share: data.search_top_impression_share ? Number(data.search_top_impression_share) : 0,
-                search_impression_share: data.search_impression_share ? Number(data.search_impression_share) : 0,
-                target_cpa: data.target_cpa ? Number(data.target_cpa) : 0,
-                avg_target_cpa: data.avg_target_cpa ? Number(data.avg_target_cpa) : 0,
-                date: data.date,
-            }, {
+            .upsert(rowsToInsert, {
                 onConflict: 'account_id,campaign_name,date',
                 ignoreDuplicates: false // Precisamos atualizar valores, não ignorar
             });
 
         if (insertError) throw insertError;
 
-        // Retorna string ou json de sucesso pro script. Devolver o Profit calculado pode ser um bônus de log no Google
-        return NextResponse.json({ success: true, profit }, { status: 200 });
+        // Retorna status e quantos registos injetou
+        return NextResponse.json({ success: true, processed: rowsToInsert.length }, { status: 200 });
 
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

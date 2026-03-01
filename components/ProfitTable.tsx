@@ -29,7 +29,7 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
     return (
         <div className="mt-8 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/20 backdrop-blur-sm">
             <div className="border-b border-neutral-800 bg-neutral-900/40 px-6 py-5">
-                <h2 className="text-sm font-semibold tracking-wide text-neutral-300 uppercase">Live Operations</h2>
+                <h2 className="text-sm font-semibold tracking-wide text-neutral-300 uppercase">Operações Atuais</h2>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm whitespace-nowrap">
@@ -58,10 +58,10 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
                     <tbody className="divide-y divide-neutral-800/50">
                         {metrics.map((metric) => {
                             const formatCurrency = (val: number) =>
-                                new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+                                new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
                             const formatDecimal = (val: number) =>
-                                new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+                                new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
 
                             const formatPercent = (val: number) =>
                                 new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2 }).format(val / 100);
@@ -88,35 +88,35 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
                                 if (metric.cost > 0.7 * estimatedCommission && estimatedCommission > 0) {
                                     rowStyle = 'bg-rose-900/20 border-l-[3px] border-l-rose-600';
                                     statusBadge = 'bg-rose-950 text-rose-400 border-rose-800';
-                                    statusLabel = 'ABORT'; // Vermelho Escuro
+                                    statusLabel = 'ABORTAR'; // Vermelho Escuro
                                 } else if (metric.cost > 0.5 * estimatedCommission && estimatedCommission > 0) {
                                     rowStyle = 'bg-orange-900/20 border-l-[3px] border-l-orange-500';
                                     statusBadge = 'bg-orange-950 text-orange-400 border-orange-800';
-                                    statusLabel = 'WARNING'; // Vermelho Claro/Laranja
+                                    statusLabel = 'ALERTA'; // Vermelho Claro/Laranja
                                 } else if (metric.cost > 0) {
                                     rowStyle = 'bg-transparent border-l-[3px] border-l-neutral-700';
                                     statusBadge = 'bg-neutral-800 text-neutral-400 border-neutral-700';
-                                    statusLabel = 'SPEND';
+                                    statusLabel = 'GASTANDO';
                                 } else {
-                                    statusLabel = 'IDLE';
+                                    statusLabel = 'OCIOSO';
                                 }
                             } else {
                                 if (metric.profit < 0) {
                                     rowStyle = 'bg-rose-900/20 border-l-[3px] border-l-rose-600';
                                     statusBadge = 'bg-rose-950 text-rose-400 border-rose-800';
-                                    statusLabel = 'LOSS'; // Vermelho Escuro
+                                    statusLabel = 'PREJUÍZO'; // Vermelho Escuro
                                 } else if (metric.profit < 0.4 * metric.conversion_value) {
                                     rowStyle = 'bg-yellow-900/10 border-l-[3px] border-l-yellow-500';
                                     statusBadge = 'bg-yellow-950 text-yellow-400 border-yellow-800';
-                                    statusLabel = 'ROI DROP'; // Amarelo
+                                    statusLabel = 'QUEDA ROI'; // Amarelo
                                 } else if (roiPercent > 100) {
                                     rowStyle = 'bg-emerald-900/20 border-l-[3px] border-l-emerald-500';
                                     statusBadge = 'bg-emerald-950 text-emerald-400 border-emerald-800';
-                                    statusLabel = 'BRUTAL ROI'; // Verde Escuro
+                                    statusLabel = 'ROI BRUTAL'; // Verde Escuro
                                 } else {
                                     rowStyle = 'bg-emerald-900/5 border-l-[3px] border-l-emerald-400/50';
                                     statusBadge = 'bg-emerald-950/50 text-emerald-500 border-emerald-900/50';
-                                    statusLabel = 'PROFIT'; // Verde Claro
+                                    statusLabel = 'LUCRO'; // Verde Claro
                                 }
                             }
 
@@ -130,7 +130,7 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
                                                 </span>
                                             ) : (
                                                 <span className="text-[10px] uppercase tracking-wider text-neutral-600 mb-0.5">
-                                                    Unlinked Account
+                                                    Conta Não Vinculada
                                                 </span>
                                             )}
                                             <span className="font-mono text-xs text-neutral-300 group-hover:text-white transition-colors">
@@ -180,7 +180,7 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
                         {metrics.length === 0 && (
                             <tr>
                                 <td colSpan={18} className="px-6 py-12 text-center text-neutral-600 font-mono text-xs border-t border-neutral-800">
-                                    [  Awaiting telemetry data from Ads Engine  ]
+                                    [  Aguardando telemetria do Motor de Anúncios  ]
                                 </td>
                             </tr>
                         )}

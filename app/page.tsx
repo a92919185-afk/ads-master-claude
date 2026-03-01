@@ -14,7 +14,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   // Calculate the start date based on the selected filter
   const daysNum = parseInt(days, 10);
-  const startDate = format(subDays(new Date(), daysNum), 'yyyy-MM-dd');
+  // Se for "1", a gente subtrai 0 dias pra pegar só hoje.
+  // Se for "7", a gente subtrai 6 dias, pra dar 7 dias contando com hoje.
+  const daysToSubtract = daysNum > 0 ? daysNum - 1 : 0;
+
+  // Utilizar o fuso de Brasília (America/Sao_Paulo) constante para evitar 
+  // que o host (Vercel, que é UTC) mude a data 3 horas antes da meia-noite do Brasil.
+  const dateToFormat = subDays(new Date(), daysToSubtract);
+  const startDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(dateToFormat); // en-CA converte de forma nativa para YYYY-MM-DD
 
   // Fetch real data from Supabase
   const { data: metrics, error } = await supabase
@@ -56,7 +68,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               <h1 className="text-3xl font-semibold tracking-tight text-neutral-100">AdsMaster</h1>
             </div>
             <p className="text-sm font-medium tracking-wide text-neutral-500 uppercase">
-              Consolidated Profit Terminal
+              Terminal de Lucro Consolidado
             </p>
           </div>
           <DashboardFilters currentFilter={days} />
@@ -65,26 +77,26 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {/* Cards Section */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <MetricHeaderCard
-            title="NET PROFIT"
+            title="LUCRO LÍQUIDO"
             value={totalProfit}
             isCurrency
             trend={profitTrend}
             icon="profit"
           />
           <MetricHeaderCard
-            title="TOTAL AD SPEND"
+            title="INVESTIMENTO (CUSTO)"
             value={totalCost}
             isCurrency
             icon="cost"
           />
           <MetricHeaderCard
-            title="GROSS REVENUE"
+            title="RECEITA BRUTA"
             value={totalRevenue}
             isCurrency
             icon="conversion"
           />
           <MetricHeaderCard
-            title="TOTAL CLICKS"
+            title="TOTAL DE CLIQUES"
             value={totalClicks}
             icon="click"
           />
@@ -99,10 +111,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {campaignMetrics.length === 0 && !error && (
           <div className="mt-12 text-center py-20 border border-dashed border-neutral-800 rounded-2xl">
             <p className="text-neutral-500 font-mono text-sm uppercase tracking-widest">
-              [ NO DATA TELEMETRY DETECTED IN SELECTED RANGE ]
+              [ NENHUMA TELEMETRIA DE DADOS DETECTADA NO PERÍODO SELECIONADO ]
             </p>
             <p className="text-neutral-700 text-xs mt-2">
-              Awaiting payload from Google Ads Script...
+              Aguardando envio de dados do Script do Google Ads...
             </p>
           </div>
         )}

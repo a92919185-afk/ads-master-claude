@@ -11,3 +11,8 @@
 ## 2026-02-27 - US-006
 - Criado interface Lucro/Status Profit Table e MetricHeader
 **Learnings**: Usei Intl.NumberFormat para currency isolando e cores unificadas padroes com o design system do tailwind (emerald, red) para profit table
+
+## 2026-02-28 - Ajustes de Fetch e Webhook em Lote (Bulk GAQL API)
+- Convertido `GOOGLE_ADS_SCRIPT.js` para usar GAQL (`AdsApp.search`) em vez de iteradores tradicionais para obter variáveis completas.
+- Adicionado suporte as colunas: Target CPA, Average Target CPA, Impression Shares.
+- Modificado a rota `route.ts` para suportar inserções em lote (bulk upsert array) para não ter um limite de conexões/taxas entre a Vercel e o Supabase quando enviamos 30 dias de dados de todas as campanhas.
