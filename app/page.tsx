@@ -3,7 +3,6 @@ import { MetricHeaderCard } from "@/components/MetricHeaderCard";
 import { ProfitTable } from "@/components/ProfitTable";
 import { PerformanceChart } from "@/components/PerformanceChart";
 import { supabase } from "@/utils/supabase";
-import { subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 export const dynamic = 'force-dynamic'; // Prevent static generation errors on Vercel
 export const revalidate = 0;
@@ -12,72 +11,75 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const params = await searchParams;
   const filterKey = params?.filter || 'today';
 
-  const tz = 'America/Sao_Paulo';
-  // Criar uma data "Hoje" já simulada no timezone do brasil usando date-fns-tz ou simples
-  // Simplificando o Locale String Date parsing
-  const now = new Date();
-  const todayBR = new Date(new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(now));
+  // Mapeamento Blindado de Datas (Resolvendo Fusos da Vercel que rodam em UTC)
+  // 1. Descobrir qual é o dia atual no Brasil Exatamente Agora
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  const [month, day, year] = formatter.format(new Date()).split('/');
+
+  // 2. Criamos o dia de "Hoje" fixado em meio-dia (12:00 UTC) 
+  // Isso impede que subtrair/adicionar dias pule para o dia anterior por erro de horas.
+  const todayBR = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0));
 
   let startD = todayBR;
   let endD = todayBR;
 
   switch (filterKey) {
     case 'today':
-      startD = todayBR;
-      endD = todayBR;
       break;
     case 'yesterday':
-      startD = subDays(todayBR, 1);
-      endD = subDays(todayBR, 1);
+      startD = new Date(todayBR.getTime() - 1 * 86400000);
+      endD = new Date(todayBR.getTime() - 1 * 86400000);
       break;
-    case 'this_week': // (dom até Hoje)
-      startD = startOfWeek(todayBR, { weekStartsOn: 0 });
-      endD = todayBR;
+    case 'this_week': {
+      // 0 = Dom, 1 = Seg ...
+      const dayOfWeek = todayBR.getUTCDay();
+      startD = new Date(todayBR.getTime() - dayOfWeek * 86400000);
       break;
+    }
     case 'last_7_days':
-      startD = subDays(todayBR, 6); // 7 dias incluindo hoje é -6
-      endD = todayBR;
+      startD = new Date(todayBR.getTime() - 6 * 86400000);
       break;
-    case 'last_week': // Semana passada (dom a sab)
-      startD = startOfWeek(subDays(todayBR, 7), { weekStartsOn: 0 });
-      endD = endOfWeek(subDays(todayBR, 7), { weekStartsOn: 0 });
+    case 'last_week': {
+      const dayOfWeek = todayBR.getUTCDay();
+      // O final da semana passada é o sábado passado
+      endD = new Date(todayBR.getTime() - (dayOfWeek + 1) * 86400000);
+      // O início da semana passada é o domingo antes do sábado
+      startD = new Date(endD.getTime() - 6 * 86400000);
       break;
+    }
     case 'last_14_days':
-      startD = subDays(todayBR, 13);
-      endD = todayBR;
+      startD = new Date(todayBR.getTime() - 13 * 86400000);
       break;
     case 'this_month':
-      startD = startOfMonth(todayBR);
-      endD = todayBR;
+      startD = new Date(Date.UTC(Number(year), Number(month) - 1, 1, 12, 0, 0));
       break;
     case 'last_30_days':
-      startD = subDays(todayBR, 29);
-      endD = todayBR;
+      startD = new Date(todayBR.getTime() - 29 * 86400000);
       break;
-    case 'last_month': // Último mês completo (dia 1 até o ultimo dia)
-      startD = startOfMonth(subMonths(todayBR, 1));
-      endD = endOfMonth(subMonths(todayBR, 1));
+    case 'last_month': {
+      let prevMonth = Number(month) - 2; // -1 porque o JS é index=0, e -1 pq queremos o anterior
+      let prevYear = Number(year);
+      if (prevMonth < 0) {
+        prevMonth = 11;
+        prevYear -= 1;
+      }
+      startD = new Date(Date.UTC(prevYear, prevMonth, 1, 12, 0, 0));
+      endD = new Date(Date.UTC(prevYear, prevMonth + 1, 0, 12, 0, 0)); // dia 0 volta pro último dia do prevMonth
       break;
+    }
     case 'all_time':
-      startD = new Date('2020-01-01');
-      endD = todayBR;
-      break;
-    default:
-      startD = todayBR;
-      endD = todayBR;
+      startD = new Date(Date.UTC(2020, 0, 1, 12, 0, 0));
       break;
   }
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-CA', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(date);
-  };
+  // Com as datas em UTC-Noon fixas, extrair o YYYY-MM-DD é 100% à prova de falhas na Vercel
+  const startStr = startD.toISOString().split('T')[0];
+  const endStr = endD.toISOString().split('T')[0];
 
-  const startStr = formatDate(startD);
-  const endStr = formatDate(endD);
+  console.log(`Filtro: ${filterKey} | Start: ${startStr} | End: ${endStr}`);
 
   // Fetch real data from Supabase within bounds
   const { data: metrics, error } = await supabase
