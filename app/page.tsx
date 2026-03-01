@@ -3,32 +3,83 @@ import { MetricHeaderCard } from "@/components/MetricHeaderCard";
 import { ProfitTable } from "@/components/ProfitTable";
 import { PerformanceChart } from "@/components/PerformanceChart";
 import { supabase } from "@/utils/supabase";
-import { subDays, format } from "date-fns";
+import { subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 export const dynamic = 'force-dynamic'; // Prevent static generation errors on Vercel
 export const revalidate = 0;
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const params = await searchParams;
-  const days = params?.days || '1';
+  const filterKey = params?.filter || 'today';
 
-  // Calculate the start date based on the selected filter
-  const daysNum = parseInt(days, 10);
-  // Se for "1", a gente subtrai 0 dias pra pegar só hoje.
-  // Se for "7", a gente subtrai 6 dias, pra dar 7 dias contando com hoje.
-  const daysToSubtract = daysNum > 0 ? daysNum - 1 : 0;
+  const tz = 'America/Sao_Paulo';
+  // Criar uma data "Hoje" já simulada no timezone do brasil usando date-fns-tz ou simples
+  // Simplificando o Locale String Date parsing
+  const now = new Date();
+  const todayBR = new Date(new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(now));
 
-  // Utilizar o fuso de Brasília (America/Sao_Paulo) constante para evitar 
-  // que o host (Vercel, que é UTC) mude a data 3 horas antes da meia-noite do Brasil.
-  const dateToFormat = subDays(new Date(), daysToSubtract);
-  const startDate = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(dateToFormat); // en-CA converte de forma nativa para YYYY-MM-DD
+  let startD = todayBR;
+  let endD = todayBR;
 
-  // Fetch real data from Supabase
+  switch (filterKey) {
+    case 'today':
+      startD = todayBR;
+      endD = todayBR;
+      break;
+    case 'yesterday':
+      startD = subDays(todayBR, 1);
+      endD = subDays(todayBR, 1);
+      break;
+    case 'this_week': // (dom até Hoje)
+      startD = startOfWeek(todayBR, { weekStartsOn: 0 });
+      endD = todayBR;
+      break;
+    case 'last_7_days':
+      startD = subDays(todayBR, 6); // 7 dias incluindo hoje é -6
+      endD = todayBR;
+      break;
+    case 'last_week': // Semana passada (dom a sab)
+      startD = startOfWeek(subDays(todayBR, 7), { weekStartsOn: 0 });
+      endD = endOfWeek(subDays(todayBR, 7), { weekStartsOn: 0 });
+      break;
+    case 'last_14_days':
+      startD = subDays(todayBR, 13);
+      endD = todayBR;
+      break;
+    case 'this_month':
+      startD = startOfMonth(todayBR);
+      endD = todayBR;
+      break;
+    case 'last_30_days':
+      startD = subDays(todayBR, 29);
+      endD = todayBR;
+      break;
+    case 'last_month': // Último mês completo (dia 1 até o ultimo dia)
+      startD = startOfMonth(subMonths(todayBR, 1));
+      endD = endOfMonth(subMonths(todayBR, 1));
+      break;
+    case 'all_time':
+      startD = new Date('2020-01-01');
+      endD = todayBR;
+      break;
+    default:
+      startD = todayBR;
+      endD = todayBR;
+      break;
+  }
+
+  const formatDate = (date: Date) => {
+    return new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  };
+
+  const startStr = formatDate(startD);
+  const endStr = formatDate(endD);
+
+  // Fetch real data from Supabase within bounds
   const { data: metrics, error } = await supabase
     .from('campaign_metrics')
     .select(`
@@ -38,7 +89,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         google_ads_account_id
       )
     `)
-    .gte('date', startDate)
+    .gte('date', startStr)
+    .lte('date', endStr)
     .order('date', { ascending: false });
 
   if (error) {
@@ -71,7 +123,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               Terminal de Lucro Consolidado
             </p>
           </div>
-          <DashboardFilters currentFilter={days} />
+          <DashboardFilters currentFilter={filterKey} />
         </div>
 
         {/* Cards Section */}
