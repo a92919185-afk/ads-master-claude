@@ -157,7 +157,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
 
         {/* Chart Section */}
-        <PerformanceChart metrics={campaignMetrics} />
+        <PerformanceChart metrics={campaignMetrics} dateRange={{ start: startStr, end: endStr }} />
 
         {/* Table Section */}
         <ProfitTable metrics={campaignMetrics} />

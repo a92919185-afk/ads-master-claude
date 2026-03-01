@@ -22,30 +22,53 @@ interface CampaignMetric {
 
 interface PerformanceChartProps {
     metrics: CampaignMetric[];
+    dateRange?: { start: string; end: string };
 }
 
-export function PerformanceChart({ metrics }: PerformanceChartProps) {
+export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) {
     const chartData = useMemo(() => {
-        // Group metrics by date
-        const grouped = metrics.reduce((acc, curr) => {
+        // Prepare empty dates bucket if we have dateRange boundaries
+        const grouped: Record<string, { date: string; cost: number; revenue: number; profit: number }> = {};
+
+        if (dateRange && dateRange.start && dateRange.end) {
+            const startDateStr = dateRange.start;
+            const endDateStr = dateRange.end;
+
+            // Create UTC-noon clamped dates to loop safely
+            let [sy, sm, sd] = startDateStr.split('-');
+            let [ey, em, ed] = endDateStr.split('-');
+
+            const startDate = new Date(Date.UTC(Number(sy), Number(sm) - 1, Number(sd), 12, 0, 0));
+            const endDate = new Date(Date.UTC(Number(ey), Number(em) - 1, Number(ed), 12, 0, 0));
+
+            const currDate = new Date(startDate.getTime());
+
+            while (currDate <= endDate) {
+                const dateKey = currDate.toISOString().split("T")[0];
+                grouped[dateKey] = { date: dateKey, cost: 0, revenue: 0, profit: 0 };
+                currDate.setDate(currDate.getDate() + 1);
+            }
+        }
+
+        // Fill real data based on metrics
+        metrics.forEach((curr) => {
             const dateKey = curr.date;
-            if (!acc[dateKey]) {
-                acc[dateKey] = {
+            if (!grouped[dateKey]) {
+                grouped[dateKey] = {
                     date: dateKey,
                     cost: 0,
                     revenue: 0,
                     profit: 0,
                 };
             }
-            acc[dateKey].cost += Number(curr.cost) || 0;
-            acc[dateKey].revenue += Number(curr.conversion_value) || 0;
-            acc[dateKey].profit += Number(curr.profit) || 0;
-            return acc;
-        }, {} as Record<string, { date: string; cost: number; revenue: number; profit: number }>);
+            grouped[dateKey].cost += Number(curr.cost) || 0;
+            grouped[dateKey].revenue += Number(curr.conversion_value) || 0;
+            grouped[dateKey].profit += Number(curr.profit) || 0;
+        });
 
         // Convert to array and sort by date ascending
         return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
-    }, [metrics]);
+    }, [metrics, dateRange]);
 
     const formatCurrency = (val: number) =>
         new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
@@ -70,7 +93,7 @@ export function PerformanceChart({ metrics }: PerformanceChartProps) {
                 </h2>
                 <div className="flex-1 flex flex-col items-center justify-center border border-neutral-800/50 rounded-lg bg-neutral-900/40 p-6">
                     <p className="text-neutral-400 text-xs font-mono mb-4 text-center uppercase tracking-tighter">
-                        [ APENAS TELEMETRIA DE HOJE ({format(parseISO(singlePoint.date), "dd/MM")}) DETECTADA ]
+                        [ DADOS DO DIA ÚNICO SELECIONADO: {format(parseISO(singlePoint.date), "dd/MM")} ]
                     </p>
                     <div className="grid grid-cols-3 gap-8 w-full max-w-md">
                         <div className="text-center">
