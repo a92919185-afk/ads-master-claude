@@ -25,10 +25,11 @@ CREATE TABLE IF NOT EXISTS public.campaign_metrics (
   target_cpa numeric(12,2) DEFAULT 0,
   avg_target_cpa numeric(12,2) DEFAULT 0,
   date date NOT NULL,
+  hour integer DEFAULT 0 NOT NULL,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-  
-  -- Prevent duplicate entries for the same campaign on the same day
-  UNIQUE(account_id, campaign_name, date)
+
+  -- Prevent duplicate entries for the same campaign on the same day and hour
+  UNIQUE(account_id, campaign_name, date, hour)
 );
 
 -- Note: Profit calculation (conversion_value - cost) should typically be handled

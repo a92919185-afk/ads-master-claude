@@ -3,9 +3,10 @@
  * Resolve problemas de extração de CPA Desejado e Impression Shares.
  */
 
+// To set the API key: go to Project Settings > Script Properties and add API_KEY
 const CONFIG = {
     WEBHOOK_URL: 'https://adsmaster-s4u5.vercel.app/api/webhooks/ads',
-    API_KEY: '681049',
+    API_KEY: PropertiesService.getScriptProperties().getProperty('API_KEY') || '',
     ACCOUNT_ID: AdsApp.currentAccount().getCustomerId(),
     DAYS_BACK: 30
 };

@@ -79,7 +79,8 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                             const roiPercent = metric.cost > 0 ? (metric.profit / metric.cost) * 100 : 0;
 
                             // Risk Management & Colors Logic (US-008 & US-009)
-                            const nameMatch = metric.campaign_name.match(/\$(\d+(\.\d+)?)/);
+                            // Risk Management & Colors Logic (US-008 & US-009)
+                            const nameMatch = metric.campaign_name.match(/\$\s*(\d+(\.\d+)?)/);
                             const extractedCommission = nameMatch ? parseFloat(nameMatch[1]) : 0;
 
                             const estimatedCommission = extractedCommission > 0
@@ -148,7 +149,7 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                                                 {metric.campaign_name}
                                             </a>
                                             {(() => {
-                                                if (extractedCommission > 0 && conversionsCount === 0 && metric.cost > 0) {
+                                                if (extractedCommission > 0 && metric.cost > 0) {
                                                     const consumption = (metric.cost / extractedCommission) * 100;
                                                     let colorClass = 'text-emerald-500';
                                                     if (consumption >= 70) colorClass = 'text-rose-500';
@@ -156,7 +157,8 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
 
                                                     return (
                                                         <span className={`text-[9px] font-bold mt-1 ${colorClass}`}>
-                                                            Consumo Margem: {consumption.toFixed(1)}% de ${extractedCommission}
+                                                            {conversionsCount > 0 ? 'ROI Potencial: ' : 'Consumo Margem: '}
+                                                            {consumption.toFixed(1)}% de ${extractedCommission}
                                                         </span>
                                                     );
                                                 }
@@ -170,7 +172,7 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                                             <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border ${statusBadge}`}>
                                                 {statusLabel}
                                             </span>
-                                            {conversionsCount === 0 && estimatedCommission > 0 && metric.cost > 0 && (
+                                            {estimatedCommission > 0 && metric.cost > 0 && (
                                                 <span className="text-[9px] font-mono text-neutral-500" title="Custo vs Comissão Estimada">
                                                     {formatCurrency(metric.cost)}/{formatCurrency(estimatedCommission)}
                                                 </span>

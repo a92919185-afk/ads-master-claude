@@ -9,6 +9,7 @@ import {
     Tooltip,
     XAxis,
     YAxis,
+    ReferenceLine,
 } from "recharts";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -24,9 +25,10 @@ interface CampaignMetric {
 interface PerformanceChartProps {
     metrics: CampaignMetric[];
     dateRange?: { start: string; end: string };
+    commissionValue?: number;
 }
 
-export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) {
+export function PerformanceChart({ metrics, dateRange, commissionValue }: PerformanceChartProps) {
     const isSingleDay = dateRange && dateRange.start === dateRange.end;
 
     const chartData = useMemo(() => {
@@ -127,12 +129,28 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         interval={isSingleDay ? 2 : "preserveStartEnd"}
                     />
                     <YAxis
+                        yAxisId="left"
                         tickFormatter={(val) => `$${val}`}
                         axisLine={false}
                         tickLine={false}
                         tick={{ fill: "#737373", fontSize: 12 }}
                         width={70}
                     />
+                    {commissionValue && commissionValue > 0 && (
+                        <ReferenceLine
+                            yAxisId="left"
+                            y={commissionValue}
+                            stroke="#f43f5e"
+                            strokeDasharray="3 3"
+                            label={{
+                                value: `Ref. $${commissionValue}`,
+                                fill: '#f43f5e',
+                                position: 'right',
+                                fontSize: 10,
+                                fontWeight: 'bold'
+                            }}
+                        />
+                    )}
                     <Tooltip
                         content={({ active, payload, label }) => {
                             if (active && payload && payload.length) {
@@ -174,6 +192,7 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         }}
                     />
                     <Area
+                        yAxisId="left"
                         type="monotone"
                         dataKey="revenue"
                         stroke="#10b981"
@@ -185,6 +204,7 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         activeDot={{ r: 6, strokeWidth: 0, fill: "#10b981" }}
                     />
                     <Area
+                        yAxisId="left"
                         type="monotone"
                         dataKey="cost"
                         stroke="#f43f5e"
@@ -196,6 +216,7 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         activeDot={{ r: 6, strokeWidth: 0, fill: "#f43f5e" }}
                     />
                     <Area
+                        yAxisId="left"
                         type="monotone"
                         dataKey="profit"
                         stroke="#3b82f6"

@@ -215,7 +215,20 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
 
         {/* Chart Section */}
-        <PerformanceChart metrics={filteredMetrics} dateRange={{ start: startStr, end: endStr }} />
+        {(() => {
+          const maxCommission = summaryMetrics.reduce((max: number, m: any) => {
+            const match = m.campaign_name.match(/\$\s*(\d+(\.\d+)?)/);
+            const comm = match ? parseFloat(match[1]) : 0;
+            return Math.max(max, comm);
+          }, 0);
+          return (
+            <PerformanceChart
+              metrics={filteredMetrics}
+              dateRange={{ start: startStr, end: endStr }}
+              commissionValue={maxCommission}
+            />
+          );
+        })()}
 
         {/* Table Section */}
         <ProfitTable
