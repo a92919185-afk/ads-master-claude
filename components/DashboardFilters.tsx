@@ -22,8 +22,6 @@ export function DashboardFilters({ currentFilter }: DashboardFiltersProps) {
         { label: 'Últimos 7 dias', value: 'last_7_days' },
         { label: 'Últimos 14 dias', value: 'last_14_days' },
         { label: 'Últimos 30 dias', value: 'last_30_days' },
-        { label: 'Este mês', value: 'this_month' },
-        { label: 'Todo o período', value: 'all_time' },
     ];
 
     return (
