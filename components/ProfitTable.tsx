@@ -79,7 +79,7 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                             const roiPercent = metric.cost > 0 ? (metric.profit / metric.cost) * 100 : 0;
 
                             // Risk Management & Colors Logic (US-008 & US-009)
-                            const nameMatch = metric.campaign_name.match(/\$(\d+)/);
+                            const nameMatch = metric.campaign_name.match(/\$(\d+(\.\d+)?)/);
                             const extractedCommission = nameMatch ? parseFloat(nameMatch[1]) : 0;
 
                             const estimatedCommission = extractedCommission > 0
