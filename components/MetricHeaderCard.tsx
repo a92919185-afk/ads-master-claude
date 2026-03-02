@@ -5,23 +5,26 @@ interface MetricHeaderCardProps {
     value: string | number;
     subValue?: string;
     isCurrency?: boolean;
+    suffix?: string;
     trend?: 'up' | 'down' | 'neutral';
-    icon: 'click' | 'cost' | 'profit' | 'conversion';
+    icon: 'click' | 'cost' | 'profit' | 'conversion' | 'roi' | 'conversions';
 }
 
-export function MetricHeaderCard({ title, value, subValue, isCurrency, trend, icon }: MetricHeaderCardProps) {
+export function MetricHeaderCard({ title, value, subValue, isCurrency, suffix, trend, icon }: MetricHeaderCardProps) {
     const getIcon = () => {
         switch (icon) {
             case 'click': return <MousePointer2 className="h-4 w-4 text-neutral-400" strokeWidth={1.5} />;
             case 'cost': return <ArrowDownRight className="h-4 w-4 text-rose-500" strokeWidth={1.5} />;
             case 'profit': return <ArrowUpRight className="h-4 w-4 text-emerald-400" strokeWidth={1.5} />;
             case 'conversion': return <Activity className="h-4 w-4 text-blue-400" strokeWidth={1.5} />;
+            case 'roi': return <ArrowUpRight className="h-4 w-4 text-violet-400" strokeWidth={1.5} />;
+            case 'conversions': return <Activity className="h-4 w-4 text-emerald-500" strokeWidth={1.5} />;
         }
     };
 
     const formattedValue = isCurrency
         ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value))
-        : new Intl.NumberFormat('en-US').format(Number(value));
+        : new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(Number(value));
 
     // Determine the text color for the value based strictly on trend or fallback to neutral white
     const valueColor = trend === 'down'
@@ -44,7 +47,7 @@ export function MetricHeaderCard({ title, value, subValue, isCurrency, trend, ic
 
             <div className="relative z-10 flex items-baseline gap-2">
                 <h3 className={`text-3xl font-light tracking-tight ${valueColor}`}>
-                    {formattedValue}
+                    {formattedValue}{suffix && <span className="text-xl ml-0.5">{suffix}</span>}
                 </h3>
                 {subValue && (
                     <span className="text-xs font-medium text-neutral-600">
