@@ -1,154 +1,144 @@
 /**
- * AdsMaster - Google Ads Ingestion Script (V2.4 - Final Resilient Version)
- * Resolve problemas de extração de CPA Desejado e Impression Shares.
+ * ADSMASTER SCRIPT V2.6 - REAL-TIME FOCUS
+ * Fuso horário sincronizado com a conta para capturar conversões de HOJE.
  */
 
-// To set the API key: go to Project Settings > Script Properties and add API_KEY
 const CONFIG = {
     WEBHOOK_URL: 'https://adsmaster-s4u5.vercel.app/api/webhooks/ads',
-    API_KEY: PropertiesService.getScriptProperties().getProperty('API_KEY') || '',
+    API_KEY: PropertiesService.getScriptProperties().getProperty('API_KEY') || '681049',
     ACCOUNT_ID: AdsApp.currentAccount().getCustomerId(),
-    DAYS_BACK: 30
+    ACCOUNT_TZ: AdsApp.currentAccount().getTimeZone(),
+    DAYS_BACK: 2
 };
 
 function main() {
-    Logger.log('Iniciando extração V2.4 para a conta: ' + CONFIG.ACCOUNT_ID);
+    Logger.log('Iniciando sincronização AdsMaster V2.6...');
+    Logger.log('Fuso Horário da Conta: ' + CONFIG.ACCOUNT_TZ);
 
-    const today = new Date();
-    const pastDate = new Date();
-    pastDate.setDate(today.getDate() - CONFIG.DAYS_BACK);
+    const allMetrics = [];
+    const dates = getDateRange();
 
-    const formatDate = (date) => Utilities.formatDate(date, AdsApp.currentAccount().getTimeZone(), "yyyyMMdd");
-    const startDateStr = formatDate(pastDate);
-    const endDateStr = formatDate(today);
+    dates.forEach(date => {
+        Logger.log('--- Processando Data: ' + date + ' ---');
 
-    // 1. Coletar Métricas Diárias de Configuração (IS, CPA, Orçamento)
-    const dailyMap = {};
-    const dailyQuery = `
-        SELECT
-            campaign.name,
-            campaign.status,
-            campaign_budget.amount_micros,
-            campaign.target_cpa.target_cpa_micros,
-            metrics.average_target_cpa_micros,
+        // 1. Configurações (CPA, IS, Orçamento)
+        const dailyConfig = getDailyConfig(date);
+
+        // 2. Performance (Cliques, Custo, CONVERSÕES) - Nível Horário
+        const hourlyStats = getHourlyStats(date);
+
+        hourlyStats.forEach(stat => {
+            const config = dailyConfig[stat.campaign_name] || {};
+            allMetrics.push({
+                ...stat,
+                budget: config.budget || 0,
+                status: config.status || 'ENABLED',
+                search_impression_share: config.search_impression_share || 0,
+                search_top_impression_share: config.search_top_impression_share || 0,
+                search_absolute_top_impression_share: config.search_absolute_top_impression_share || 0,
+                target_cpa: config.target_cpa || 0,
+                avg_target_cpa: config.avg_target_cpa || 0,
+                account_id: CONFIG.ACCOUNT_ID,
+                account_name: AdsApp.currentAccount().getName()
+            });
+        });
+    });
+
+    if (allMetrics.length > 0) {
+        Logger.log('Enviando ' + allMetrics.length + ' registros horários...');
+        sendToWebhook(allMetrics);
+    } else {
+        Logger.log('Nada para enviar. Verifique se houve gasto hoje.');
+    }
+}
+
+function getDailyConfig(date) {
+    const configMap = {};
+    const query = `
+        SELECT 
+            campaign.name, campaign.status, campaign_budget.amount_micros,
+            metrics.search_impression_share, metrics.search_top_impression_share,
             metrics.search_absolute_top_impression_share,
-            metrics.search_top_impression_share,
-            metrics.search_impression_share,
-            segments.date
-        FROM campaign
-        WHERE campaign.status IN ('ENABLED', 'PAUSED')
-          AND segments.date BETWEEN '${startDateStr}' AND '${endDateStr}'
-    `;
+            metrics.average_target_cpa_micros, campaign.target_cpa.target_cpa_micros
+        FROM campaign 
+        WHERE segments.date = '${date}' 
+          AND campaign.status != 'REMOVED'`;
 
-    const dailyReport = AdsApp.search(dailyQuery);
-    while (dailyReport.hasNext()) {
-        const row = dailyReport.next();
-        const key = row.campaign.name + '_' + row.segments.date;
-
-        // Extração segura de CPA (Tenta configuração, depois média da métrica)
-        const configCpa = (row.campaign && row.campaign.targetCpa && row.campaign.targetCpa.targetCpaMicros) ? row.campaign.targetCpa.targetCpaMicros / 1000000 : 0;
-        const metricCpa = (row.metrics && row.metrics.averageTargetCpaMicros) ? row.metrics.averageTargetCpaMicros / 1000000 : 0;
-        const finalCpa = configCpa || metricCpa || 0;
-
-        dailyMap[key] = {
-            budget: (row.campaignBudget && row.campaignBudget.amountMicros) ? row.campaignBudget.amountMicros / 1000000 : 0,
+    const report = AdsApp.search(query);
+    while (report.hasNext()) {
+        const row = report.next();
+        configMap[row.campaign.name] = {
             status: row.campaign.status,
-            target_cpa: finalCpa,
-            avg_target_cpa: metricCpa || finalCpa,
-            absTopIS: row.metrics ? parseShare(row.metrics.searchAbsoluteTopImpressionShare) * 100 : 0,
-            topIS: row.metrics ? parseShare(row.metrics.searchTopImpressionShare) * 100 : 0,
-            imShare: row.metrics ? parseShare(row.metrics.searchImpressionShare) * 100 : 0
+            budget: row.campaignBudget.amountMicros / 1000000,
+            search_impression_share: parseShare(row.metrics.searchImpressionShare),
+            search_top_impression_share: parseShare(row.metrics.searchTopImpressionShare),
+            search_absolute_top_impression_share: parseShare(row.metrics.searchAbsoluteTopImpressionShare),
+            target_cpa: (row.campaign.targetCpa ? row.campaign.targetCpa.targetCpaMicros : row.metrics.averageTargetCpaMicros) / 1000000,
+            avg_target_cpa: row.metrics.averageTargetCpaMicros / 1000000
         };
     }
+    return configMap;
+}
 
-    // 2. Coletar Métricas de Performance Horária
-    const hourlyQuery = `
-        SELECT
-            campaign.name,
-            metrics.impressions,
-            metrics.clicks,
-            metrics.cost_micros,
-            metrics.conversions,
-            metrics.conversions_value,
-            segments.date,
-            segments.hour
-        FROM campaign
-        WHERE campaign.status IN ('ENABLED', 'PAUSED')
-          AND segments.date BETWEEN '${startDateStr}' AND '${endDateStr}'
-    `;
+function getHourlyStats(date) {
+    const stats = [];
+    const query = `
+        SELECT 
+            campaign.name, segments.hour, metrics.clicks, 
+            metrics.cost_micros, metrics.conversions, 
+            metrics.conversions_value, metrics.impressions
+        FROM campaign 
+        WHERE segments.date = '${date}' AND metrics.cost_micros > 0`;
 
-    const hourlyReport = AdsApp.search(hourlyQuery);
-    const accountName = AdsApp.currentAccount().getName();
-    let payloads = [];
-    let processed = 0;
-
-    while (hourlyReport.hasNext()) {
-        const row = hourlyReport.next();
-        const dailyKey = row.campaign.name + '_' + row.segments.date;
-        const dailyData = dailyMap[dailyKey] || {
-            budget: 0, status: row.campaign.status || 'UNKNOWN', target_cpa: 0, avg_target_cpa: 0,
-            absTopIS: 0, topIS: 0, imShare: 0
-        };
-
-        const payload = {
-            google_ads_account_id: CONFIG.ACCOUNT_ID,
-            account_name: accountName,
+    const report = AdsApp.search(query);
+    while (report.hasNext()) {
+        const row = report.next();
+        stats.push({
             campaign_name: row.campaign.name,
-            budget: Number(dailyData.budget) || 0,
-            status: dailyData.status,
-            impressions: Number(row.metrics.impressions) || 0,
-            clicks: Number(row.metrics.clicks) || 0,
-            cost: row.metrics.costMicros ? Number(row.metrics.costMicros) / 1000000 : 0,
-            conversions: Number(row.metrics.conversions) || 0,
-            conversion_value: Number(row.metrics.conversionsValue) || 0,
-            search_absolute_top_impression_share: Number(dailyData.absTopIS) || 0,
-            search_top_impression_share: Number(dailyData.topIS) || 0,
-            search_impression_share: Number(dailyData.imShare) || 0,
-            target_cpa: Number(dailyData.target_cpa) || 0,
-            avg_target_cpa: Number(dailyData.avg_target_cpa) || 0,
-            date: row.segments.date,
-            hour: Number(row.segments.hour) || 0
-        };
-
-        payloads.push(payload);
-        processed++;
-
-        if (payloads.length >= 50) {
-            sendDataBulk(payloads);
-            payloads = [];
-        }
+            date: date,
+            hour: row.segments.hour,
+            clicks: parseInt(row.metrics.clicks),
+            impressions: parseInt(row.metrics.impressions),
+            cost: row.metrics.costMicros / 1000000,
+            conversions: parseFloat(row.metrics.conversions),
+            conversion_value: parseFloat(row.metrics.conversionsValue)
+        });
     }
-
-    if (payloads.length > 0) {
-        sendDataBulk(payloads);
-    }
-
-    Logger.log('Integração V2.4 concluída. Registros: ' + processed);
+    return stats;
 }
 
 function parseShare(val) {
-    if (!val || val === '--' || val === ' < 10%' || val === ' > 90%') {
-        if (val === ' < 10%') return 0.05;
-        if (val === ' > 90%') return 0.95;
+    if (!val || val === '--' || val.includes('<') || val.includes('>')) {
+        if (val && val.includes('< 10')) return 5;
+        if (val && val.includes('> 90')) return 95;
         return 0;
     }
-    if (typeof val === 'string') {
-        return parseFloat(val.replace('%', '').replace(',', '.')) / 100;
-    }
-    return parseFloat(val);
+    return parseFloat(val.replace('%', ''));
 }
 
-function sendDataBulk(payloads) {
+function getDateRange() {
+    const dates = [];
+    const now = new Date();
+    for (let i = 0; i < CONFIG.DAYS_BACK; i++) {
+        const d = new Date(now.getTime() - i * 86400000);
+        // Usa o fuso horário real da sua conta Google Ads
+        dates.push(Utilities.formatDate(d, CONFIG.ACCOUNT_TZ, 'yyyy-MM-dd'));
+    }
+    return dates;
+}
+
+function sendToWebhook(payload) {
     const options = {
         method: 'post',
         contentType: 'application/json',
         headers: { 'x-api-key': CONFIG.API_KEY },
-        payload: JSON.stringify(payloads),
+        payload: JSON.stringify({ account_id: CONFIG.ACCOUNT_ID, metrics: payload }),
         muteHttpExceptions: true
     };
     try {
-        UrlFetchApp.fetch(CONFIG.WEBHOOK_URL, options);
+        const res = UrlFetchApp.fetch(CONFIG.WEBHOOK_URL, options);
+        Logger.log('Webhook OK (' + res.getResponseCode() + ')');
     } catch (e) {
-        Logger.log('Erro no envio: ' + e.message);
+        Logger.log('Erro no Webhook: ' + e);
     }
 }
