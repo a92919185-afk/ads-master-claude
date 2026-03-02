@@ -62,9 +62,19 @@ function main() {
         const avgTargetCpa = row.metrics && row.metrics.averageTargetCpaMicros ? row.metrics.averageTargetCpaMicros / 1000000 : 0;
         const cost = row.metrics && row.metrics.costMicros ? row.metrics.costMicros / 1000000 : 0;
 
-        const absTopIS = row.metrics && row.metrics.searchAbsoluteTopImpressionShare ? row.metrics.searchAbsoluteTopImpressionShare * 100 : 0;
-        const topIS = row.metrics && row.metrics.searchTopImpressionShare ? row.metrics.searchTopImpressionShare * 100 : 0;
-        const imShare = row.metrics && row.metrics.searchImpressionShare ? row.metrics.searchImpressionShare * 100 : 0;
+        const parseShare = (val) => {
+            if (!val || val === '--') return 0;
+            if (typeof val === 'string') {
+                if (val.includes('<')) return 0.05; // Representação de 'Menor que'
+                if (val.includes('>')) return 0.95; // Representação de 'Maior que'
+                return parseFloat(val.replace('%', '').replace(',', '.')) / 100;
+            }
+            return parseFloat(val);
+        };
+
+        const absTopIS = row.metrics ? parseShare(row.metrics.searchAbsoluteTopImpressionShare) * 100 : 0;
+        const topIS = row.metrics ? parseShare(row.metrics.searchTopImpressionShare) * 100 : 0;
+        const imShare = row.metrics ? parseShare(row.metrics.searchImpressionShare) * 100 : 0;
 
         const payload = {
             google_ads_account_id: CONFIG.ACCOUNT_ID,

@@ -121,8 +121,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     if (!acc[cleanName]) {
       acc[cleanName] = {
         ...curr,
-        campaign_name: cleanName, // Usamos o nome limpo na tabela
-        original_names: [curr.campaign_name]
+        campaign_name: cleanName,
+        original_names: [curr.campaign_name],
+        entry_count: 1
       };
     } else {
       acc[cleanName].impressions += Number(curr.impressions) || 0;
@@ -132,17 +133,32 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       acc[cleanName].conversion_value += Number(curr.conversion_value) || 0;
       acc[cleanName].profit += Number(curr.profit) || 0;
 
+      // Update Impression Shares and CPA (Running Total for Average)
+      acc[cleanName].search_absolute_top_impression_share = (Number(acc[cleanName].search_absolute_top_impression_share) || 0) + (Number(curr.search_absolute_top_impression_share) || 0);
+      acc[cleanName].search_top_impression_share = (Number(acc[cleanName].search_top_impression_share) || 0) + (Number(curr.search_top_impression_share) || 0);
+      acc[cleanName].search_impression_share = (Number(acc[cleanName].search_impression_share) || 0) + (Number(curr.search_impression_share) || 0);
+      acc[cleanName].target_cpa = (Number(acc[cleanName].target_cpa) || 0) + (Number(curr.target_cpa) || 0);
+      acc[cleanName].avg_target_cpa = (Number(acc[cleanName].avg_target_cpa) || 0) + (Number(curr.avg_target_cpa) || 0);
+      acc[cleanName].entry_count += 1;
+
       if (!acc[cleanName].original_names.includes(curr.campaign_name)) {
         acc[cleanName].original_names.push(curr.campaign_name);
       }
 
-      // Para o orçamento, mostramos o maior ou o mais recente (já está ordenado desc)
       acc[cleanName].budget = Math.max(acc[cleanName].budget || 0, curr.budget || 0);
     }
     return acc;
   }, {});
 
-  const summaryMetrics = Object.values(summaryMap) as any[];
+  // Calculate final averages for shares and CPA
+  const summaryMetrics = Object.values(summaryMap).map((m: any) => ({
+    ...m,
+    search_absolute_top_impression_share: m.entry_count > 0 ? m.search_absolute_top_impression_share / m.entry_count : 0,
+    search_top_impression_share: m.entry_count > 0 ? m.search_top_impression_share / m.entry_count : 0,
+    search_impression_share: m.entry_count > 0 ? m.search_impression_share / m.entry_count : 0,
+    target_cpa: m.entry_count > 0 ? m.target_cpa / m.entry_count : 0,
+    avg_target_cpa: m.entry_count > 0 ? m.avg_target_cpa / m.entry_count : 0,
+  })) as any[];
 
   // Calculate Aggregates based on filtered data (for Cards)
   const totalProfit = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.profit) || 0), 0);

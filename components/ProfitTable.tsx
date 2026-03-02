@@ -66,7 +66,7 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                                 new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
 
                             const formatPercent = (val: number) =>
-                                new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2 }).format(val / 100);
+                                new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: 2 }).format(val / 100);
 
                             const isProfitable = metric.profit > 0;
                             const isSelected = selectedCampaign === metric.campaign_name;
