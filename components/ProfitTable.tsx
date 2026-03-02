@@ -142,6 +142,23 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                                             >
                                                 {metric.campaign_name}
                                             </a>
+                                            {(() => {
+                                                const match = metric.campaign_name.match(/\$(\d+)/);
+                                                const commission = match ? parseFloat(match[1]) : 0;
+                                                if (commission > 0 && conversionsCount === 0 && metric.cost > 0) {
+                                                    const consumption = (metric.cost / commission) * 100;
+                                                    let colorClass = 'text-emerald-500';
+                                                    if (consumption >= 70) colorClass = 'text-rose-500';
+                                                    else if (consumption >= 50) colorClass = 'text-yellow-500';
+
+                                                    return (
+                                                        <span className={`text-[9px] font-bold mt-1 ${colorClass}`}>
+                                                            Consumo Margem: {consumption.toFixed(1)}% de ${commission}
+                                                        </span>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
                                     </td>
                                     <td className="px-5 py-3 text-right font-mono text-xs text-neutral-400">{metric.budget ? formatCurrency(metric.budget) : '-'}</td>
