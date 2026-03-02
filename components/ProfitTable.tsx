@@ -60,10 +60,10 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                     <tbody className="divide-y divide-neutral-800/50">
                         {metrics.map((metric) => {
                             const formatCurrency = (val: number) =>
-                                new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+                                new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
                             const formatDecimal = (val: number) =>
-                                new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+                                new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
 
                             const formatPercent = (val: number) =>
                                 new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2 }).format(val / 100);

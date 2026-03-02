@@ -84,7 +84,7 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
     }, [metrics, dateRange, isSingleDay]);
 
     const formatCurrency = (val: number) =>
-        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
+        new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
     return (
         <div className="h-72 w-full mt-8 p-4 rounded-xl border border-neutral-800 bg-neutral-900/20 backdrop-blur-sm">
@@ -128,7 +128,7 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         interval={isSingleDay ? 2 : "preserveStartEnd"}
                     />
                     <YAxis
-                        tickFormatter={(val) => `R$${val}`}
+                        tickFormatter={(val) => `$${val}`}
                         axisLine={false}
                         tickLine={false}
                         tick={{ fill: "#737373", fontSize: 12 }}
