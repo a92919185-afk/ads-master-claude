@@ -79,23 +79,28 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                             const roiPercent = metric.cost > 0 ? (metric.profit / metric.cost) * 100 : 0;
 
                             // Risk Management & Colors Logic (US-008 & US-009)
-                            const estimatedCommission = metric.target_cpa && metric.target_cpa > 0
-                                ? metric.target_cpa
-                                : (conversionsCount > 0 ? metric.conversion_value / conversionsCount : 100);
+                            const nameMatch = metric.campaign_name.match(/\$(\d+)/);
+                            const extractedCommission = nameMatch ? parseFloat(nameMatch[1]) : 0;
+
+                            const estimatedCommission = extractedCommission > 0
+                                ? extractedCommission
+                                : (metric.target_cpa && metric.target_cpa > 0
+                                    ? metric.target_cpa
+                                    : (conversionsCount > 0 ? metric.conversion_value / conversionsCount : 0));
 
                             let rowStyle = 'bg-transparent border-l-[3px] border-l-transparent';
                             let statusBadge = 'bg-neutral-800 text-neutral-400 border-neutral-700';
                             let statusLabel = 'NORMAL';
 
                             if (conversionsCount === 0) {
-                                if (metric.cost > 0.7 * estimatedCommission && estimatedCommission > 0) {
+                                if (estimatedCommission > 0 && metric.cost > 0.7 * estimatedCommission) {
                                     rowStyle = 'bg-rose-900/20 border-l-[3px] border-l-rose-600';
                                     statusBadge = 'bg-rose-950 text-rose-400 border-rose-800';
-                                    statusLabel = 'ABORTAR'; // Vermelho Escuro
-                                } else if (metric.cost > 0.5 * estimatedCommission && estimatedCommission > 0) {
+                                    statusLabel = 'ABORTAR';
+                                } else if (estimatedCommission > 0 && metric.cost > 0.5 * estimatedCommission) {
                                     rowStyle = 'bg-orange-900/20 border-l-[3px] border-l-orange-500';
                                     statusBadge = 'bg-orange-950 text-orange-400 border-orange-800';
-                                    statusLabel = 'ALERTA'; // Vermelho Claro/Laranja
+                                    statusLabel = 'ALERTA';
                                 } else if (metric.cost > 0) {
                                     rowStyle = 'bg-transparent border-l-[3px] border-l-neutral-700';
                                     statusBadge = 'bg-neutral-800 text-neutral-400 border-neutral-700';
@@ -107,19 +112,19 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                                 if (metric.profit < 0) {
                                     rowStyle = 'bg-rose-900/20 border-l-[3px] border-l-rose-600';
                                     statusBadge = 'bg-rose-950 text-rose-400 border-rose-800';
-                                    statusLabel = 'PREJUÍZO'; // Vermelho Escuro
+                                    statusLabel = 'PREJUÍZO';
                                 } else if (metric.profit < 0.4 * metric.conversion_value) {
                                     rowStyle = 'bg-yellow-900/10 border-l-[3px] border-l-yellow-500';
                                     statusBadge = 'bg-yellow-950 text-yellow-400 border-yellow-800';
-                                    statusLabel = 'QUEDA ROI'; // Amarelo
+                                    statusLabel = 'QUEDA ROI';
                                 } else if (roiPercent > 100) {
                                     rowStyle = 'bg-emerald-900/20 border-l-[3px] border-l-emerald-500';
                                     statusBadge = 'bg-emerald-950 text-emerald-400 border-emerald-800';
-                                    statusLabel = 'ROI BRUTAL'; // Verde Escuro
+                                    statusLabel = 'ROI BRUTAL';
                                 } else {
                                     rowStyle = 'bg-emerald-900/5 border-l-[3px] border-l-emerald-400/50';
                                     statusBadge = 'bg-emerald-950/50 text-emerald-500 border-emerald-900/50';
-                                    statusLabel = 'LUCRO'; // Verde Claro
+                                    statusLabel = 'LUCRO';
                                 }
                             }
 
@@ -143,17 +148,15 @@ export function ProfitTable({ metrics, selectedCampaign, currentFilter }: Profit
                                                 {metric.campaign_name}
                                             </a>
                                             {(() => {
-                                                const match = metric.campaign_name.match(/\$(\d+)/);
-                                                const commission = match ? parseFloat(match[1]) : 0;
-                                                if (commission > 0 && conversionsCount === 0 && metric.cost > 0) {
-                                                    const consumption = (metric.cost / commission) * 100;
+                                                if (extractedCommission > 0 && conversionsCount === 0 && metric.cost > 0) {
+                                                    const consumption = (metric.cost / extractedCommission) * 100;
                                                     let colorClass = 'text-emerald-500';
                                                     if (consumption >= 70) colorClass = 'text-rose-500';
                                                     else if (consumption >= 50) colorClass = 'text-yellow-500';
 
                                                     return (
                                                         <span className={`text-[9px] font-bold mt-1 ${colorClass}`}>
-                                                            Consumo Margem: {consumption.toFixed(1)}% de ${commission}
+                                                            Consumo Margem: {consumption.toFixed(1)}% de ${extractedCommission}
                                                         </span>
                                                     );
                                                 }
