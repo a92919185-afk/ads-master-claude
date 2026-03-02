@@ -220,7 +220,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 {selectedCampaignName ? 'Campanha: ' : 'AdsMaster'}
               </h1>
               {selectedCampaignName && (
-                <span className="text-lg font-mono text-emerald-400 truncate max-w-xs">{selectedCampaignName}</span>
+                <span className="text-lg font-mono text-emerald-400">{selectedCampaignName}</span>
               )}
             </div>
             <p className="text-[11px] font-medium tracking-widest text-neutral-600 uppercase">
