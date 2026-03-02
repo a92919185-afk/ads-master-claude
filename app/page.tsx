@@ -103,49 +103,37 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   const campaignMetrics = metrics || [];
 
-  // 3. Filter by selected campaign/product if applicable
+  // 3. Filter by selected campaign if applicable
   const filteredMetrics = selectedCampaignName
-    ? campaignMetrics.filter((m: any) => {
-      const cleanName = m.campaign_name.split('|').slice(0, 3).map((s: string) => s.trim()).join(' | ');
-      return cleanName === selectedCampaignName || m.campaign_name === selectedCampaignName;
-    })
+    ? campaignMetrics.filter((m: any) => m.campaign_name === selectedCampaignName)
     : campaignMetrics;
 
-  // 4. Aggregate metrics for the Table (Group by "Product" or "Clean Name")
+  // 4. Aggregate metrics for the Table (Group by Exact Campaign Name)
   const summaryMap = filteredMetrics.reduce((acc: Record<string, any>, curr: any) => {
-    // Normalização: Pegamos as 3 primeiras partes do nome (Produto | Geo | Guru)
-    // Isso remove sufixos como "| 26/02/26 | $50" que causam duplicação
-    const parts = curr.campaign_name.split('|').map((s: string) => s.trim());
-    const cleanName = parts.slice(0, 3).join(' | ');
+    const key = curr.campaign_name;
 
-    if (!acc[cleanName]) {
-      acc[cleanName] = {
+    if (!acc[key]) {
+      acc[key] = {
         ...curr,
-        campaign_name: cleanName,
-        original_names: [curr.campaign_name],
         entry_count: 1
       };
     } else {
-      acc[cleanName].impressions += Number(curr.impressions) || 0;
-      acc[cleanName].clicks += Number(curr.clicks) || 0;
-      acc[cleanName].cost += Number(curr.cost) || 0;
-      acc[cleanName].conversions += Number(curr.conversions) || 0;
-      acc[cleanName].conversion_value += Number(curr.conversion_value) || 0;
-      acc[cleanName].profit += Number(curr.profit) || 0;
+      acc[key].impressions += Number(curr.impressions) || 0;
+      acc[key].clicks += Number(curr.clicks) || 0;
+      acc[key].cost += Number(curr.cost) || 0;
+      acc[key].conversions += Number(curr.conversions) || 0;
+      acc[key].conversion_value += Number(curr.conversion_value) || 0;
+      acc[key].profit += Number(curr.profit) || 0;
 
       // Update Impression Shares and CPA (Running Total for Average)
-      acc[cleanName].search_absolute_top_impression_share = (Number(acc[cleanName].search_absolute_top_impression_share) || 0) + (Number(curr.search_absolute_top_impression_share) || 0);
-      acc[cleanName].search_top_impression_share = (Number(acc[cleanName].search_top_impression_share) || 0) + (Number(curr.search_top_impression_share) || 0);
-      acc[cleanName].search_impression_share = (Number(acc[cleanName].search_impression_share) || 0) + (Number(curr.search_impression_share) || 0);
-      acc[cleanName].target_cpa = (Number(acc[cleanName].target_cpa) || 0) + (Number(curr.target_cpa) || 0);
-      acc[cleanName].avg_target_cpa = (Number(acc[cleanName].avg_target_cpa) || 0) + (Number(curr.avg_target_cpa) || 0);
-      acc[cleanName].entry_count += 1;
+      acc[key].search_absolute_top_impression_share = (Number(acc[key].search_absolute_top_impression_share) || 0) + (Number(curr.search_absolute_top_impression_share) || 0);
+      acc[key].search_top_impression_share = (Number(acc[key].search_top_impression_share) || 0) + (Number(curr.search_top_impression_share) || 0);
+      acc[key].search_impression_share = (Number(acc[key].search_impression_share) || 0) + (Number(curr.search_impression_share) || 0);
+      acc[key].target_cpa = (Number(acc[key].target_cpa) || 0) + (Number(curr.target_cpa) || 0);
+      acc[key].avg_target_cpa = (Number(acc[key].avg_target_cpa) || 0) + (Number(curr.avg_target_cpa) || 0);
+      acc[key].entry_count += 1;
 
-      if (!acc[cleanName].original_names.includes(curr.campaign_name)) {
-        acc[cleanName].original_names.push(curr.campaign_name);
-      }
-
-      acc[cleanName].budget = Math.max(acc[cleanName].budget || 0, curr.budget || 0);
+      acc[key].budget = Math.max(acc[key].budget || 0, curr.budget || 0);
     }
     return acc;
   }, {});
