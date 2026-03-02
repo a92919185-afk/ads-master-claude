@@ -33,19 +33,18 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
         const grouped: Record<string, { label: string; cost: number; revenue: number; profit: number; fullDate?: string }> = {};
 
         if (isSingleDay && dateRange) {
-            // Hourly buckets (00:00 to 23:00)
-            for (let i = 0; i < 24; i++) {
-                const hourLabel = `${String(i).padStart(2, '0')}:00`;
-                grouped[i.toString()] = { label: hourLabel, cost: 0, revenue: 0, profit: 0, fullDate: dateRange.start };
-            }
-
+            // Only create buckets for hours that actually have metrics
             metrics.forEach((curr) => {
                 const hourKey = (curr.hour || 0).toString();
-                if (grouped[hourKey]) {
-                    grouped[hourKey].cost += Number(curr.cost) || 0;
-                    grouped[hourKey].revenue += Number(curr.conversion_value) || 0;
-                    grouped[hourKey].profit += Number(curr.profit) || 0;
+                const hourLabel = `${String(curr.hour || 0).padStart(2, '0')}:00`;
+
+                if (!grouped[hourKey]) {
+                    grouped[hourKey] = { label: hourLabel, cost: 0, revenue: 0, profit: 0, fullDate: dateRange.start };
                 }
+
+                grouped[hourKey].cost += Number(curr.cost) || 0;
+                grouped[hourKey].revenue += Number(curr.conversion_value) || 0;
+                grouped[hourKey].profit += Number(curr.profit) || 0;
             });
 
             return Object.values(grouped).sort((a, b) => {
@@ -141,7 +140,7 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                                     <div className="bg-neutral-900 border border-neutral-800 p-3 rounded-lg shadow-xl">
                                         <p className="text-neutral-400 text-xs mb-2">
                                             {isSingleDay
-                                                ? `Hoje, às ${label}`
+                                                ? `${payload[0]?.payload?.fullDate === new Date().toISOString().split('T')[0] ? 'Hoje' : 'Ontem'}, às ${label}`
                                                 : label ? format(parseISO(String(label)), "dd 'de' MMMM", { locale: ptBR }) : ''
                                             }
                                         </p>
