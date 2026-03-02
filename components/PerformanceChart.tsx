@@ -182,8 +182,8 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         fillOpacity={1}
                         fill="url(#colorRevenue)"
                         name="revenue"
-                        dot={{ r: 4, fill: "#10b981", strokeWidth: 0 }}
-                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        dot={false}
+                        activeDot={{ r: 6, strokeWidth: 0, fill: "#10b981" }}
                     />
                     <Area
                         type="monotone"
@@ -193,8 +193,8 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         fillOpacity={1}
                         fill="url(#colorCost)"
                         name="cost"
-                        dot={{ r: 4, fill: "#f43f5e", strokeWidth: 0 }}
-                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        dot={false}
+                        activeDot={{ r: 6, strokeWidth: 0, fill: "#f43f5e" }}
                     />
                     <Area
                         type="monotone"
@@ -204,8 +204,8 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         fillOpacity={1}
                         fill="url(#colorProfit)"
                         name="profit"
-                        dot={{ r: 4, fill: "#3b82f6", strokeWidth: 0 }}
-                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        dot={false}
+                        activeDot={{ r: 6, strokeWidth: 0, fill: "#3b82f6" }}
                     />
                 </AreaChart>
             </ResponsiveContainer>
