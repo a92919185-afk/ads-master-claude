@@ -15,6 +15,7 @@ import { ptBR } from "date-fns/locale";
 
 interface CampaignMetric {
     date: string;
+    hour: number;
     cost: number;
     conversion_value: number;
     profit: number;
@@ -26,49 +27,61 @@ interface PerformanceChartProps {
 }
 
 export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) {
+    const isSingleDay = dateRange && dateRange.start === dateRange.end;
+
     const chartData = useMemo(() => {
-        // Prepare empty dates bucket if we have dateRange boundaries
-        const grouped: Record<string, { date: string; cost: number; revenue: number; profit: number }> = {};
+        const grouped: Record<string, { label: string; cost: number; revenue: number; profit: number; fullDate?: string }> = {};
+
+        if (isSingleDay && dateRange) {
+            // Hourly buckets (00:00 to 23:00)
+            for (let i = 0; i < 24; i++) {
+                const hourLabel = `${String(i).padStart(2, '0')}:00`;
+                grouped[i.toString()] = { label: hourLabel, cost: 0, revenue: 0, profit: 0, fullDate: dateRange.start };
+            }
+
+            metrics.forEach((curr) => {
+                const hourKey = (curr.hour || 0).toString();
+                if (grouped[hourKey]) {
+                    grouped[hourKey].cost += Number(curr.cost) || 0;
+                    grouped[hourKey].revenue += Number(curr.conversion_value) || 0;
+                    grouped[hourKey].profit += Number(curr.profit) || 0;
+                }
+            });
+
+            return Object.values(grouped).sort((a, b) => {
+                return parseInt(a.label) - parseInt(b.label);
+            });
+        }
+
+        // Default: Daily grouping
+        const dailyGrouped: Record<string, { label: string; cost: number; revenue: number; profit: number }> = {};
 
         if (dateRange && dateRange.start && dateRange.end) {
-            const startDateStr = dateRange.start;
-            const endDateStr = dateRange.end;
-
-            // Create UTC-noon clamped dates to loop safely
-            let [sy, sm, sd] = startDateStr.split('-');
-            let [ey, em, ed] = endDateStr.split('-');
-
+            let [sy, sm, sd] = dateRange.start.split('-');
+            let [ey, em, ed] = dateRange.end.split('-');
             const startDate = new Date(Date.UTC(Number(sy), Number(sm) - 1, Number(sd), 12, 0, 0));
             const endDate = new Date(Date.UTC(Number(ey), Number(em) - 1, Number(ed), 12, 0, 0));
-
             const currDate = new Date(startDate.getTime());
 
             while (currDate <= endDate) {
                 const dateKey = currDate.toISOString().split("T")[0];
-                grouped[dateKey] = { date: dateKey, cost: 0, revenue: 0, profit: 0 };
+                dailyGrouped[dateKey] = { label: dateKey, cost: 0, revenue: 0, profit: 0 };
                 currDate.setDate(currDate.getDate() + 1);
             }
         }
 
-        // Fill real data based on metrics
         metrics.forEach((curr) => {
             const dateKey = curr.date;
-            if (!grouped[dateKey]) {
-                grouped[dateKey] = {
-                    date: dateKey,
-                    cost: 0,
-                    revenue: 0,
-                    profit: 0,
-                };
+            if (!dailyGrouped[dateKey]) {
+                dailyGrouped[dateKey] = { label: dateKey, cost: 0, revenue: 0, profit: 0 };
             }
-            grouped[dateKey].cost += Number(curr.cost) || 0;
-            grouped[dateKey].revenue += Number(curr.conversion_value) || 0;
-            grouped[dateKey].profit += Number(curr.profit) || 0;
+            dailyGrouped[dateKey].cost += Number(curr.cost) || 0;
+            dailyGrouped[dateKey].revenue += Number(curr.conversion_value) || 0;
+            dailyGrouped[dateKey].profit += Number(curr.profit) || 0;
         });
 
-        // Convert to array and sort by date ascending
-        return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
-    }, [metrics, dateRange]);
+        return Object.values(dailyGrouped).sort((a, b) => a.label.localeCompare(b.label));
+    }, [metrics, dateRange, isSingleDay]);
 
     const formatCurrency = (val: number) =>
         new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -98,8 +111,9 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                     </defs>
                     {/* Linha de grid removida completamente */}
                     <XAxis
-                        dataKey="date"
+                        dataKey="label"
                         tickFormatter={(str) => {
+                            if (isSingleDay) return str; // Já é "HH:00"
                             try {
                                 return format(parseISO(str), "dd/MM");
                             } catch {
@@ -110,8 +124,8 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                         tickLine={false}
                         tick={{ fill: "#737373", fontSize: 10 }}
                         dy={10}
-                        minTickGap={0}
-                        interval={0}
+                        minTickGap={20}
+                        interval={isSingleDay ? 2 : "preserveStartEnd"}
                     />
                     <YAxis
                         tickFormatter={(val) => `R$${val}`}
@@ -126,7 +140,10 @@ export function PerformanceChart({ metrics, dateRange }: PerformanceChartProps) 
                                 return (
                                     <div className="bg-neutral-900 border border-neutral-800 p-3 rounded-lg shadow-xl">
                                         <p className="text-neutral-400 text-xs mb-2">
-                                            {label ? format(parseISO(String(label)), "dd 'de' MMMM", { locale: ptBR }) : ''}
+                                            {isSingleDay
+                                                ? `Hoje, às ${label}`
+                                                : label ? format(parseISO(String(label)), "dd 'de' MMMM", { locale: ptBR }) : ''
+                                            }
                                         </p>
                                         {payload.map((entry: { name: string; value: number; color: string }) => (
                                             <div key={entry.name} className="flex items-center gap-3 mb-1">

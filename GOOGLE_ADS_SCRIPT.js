@@ -40,7 +40,8 @@ function main() {
             metrics.search_absolute_top_impression_share,
             metrics.search_top_impression_share,
             metrics.search_impression_share,
-            segments.date
+            segments.date,
+            segments.hour
         FROM campaign
         WHERE campaign.status IN ('ENABLED', 'PAUSED')
           AND segments.date BETWEEN '${startDateStr}' AND '${endDateStr}'
@@ -81,7 +82,8 @@ function main() {
             search_impression_share: imShare,
             target_cpa: targetCpa,
             avg_target_cpa: avgTargetCpa,
-            date: row.segments.date // formato YYYY-MM-DD
+            date: row.segments.date, // formato YYYY-MM-DD
+            hour: row.segments.hour || 0
         };
 
         payloads.push(payload);

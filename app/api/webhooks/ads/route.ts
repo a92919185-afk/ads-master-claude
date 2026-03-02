@@ -23,6 +23,7 @@ interface WebhookPayload {
     target_cpa?: number;
     avg_target_cpa?: number;
     date: string; // YYYY-MM-DD
+    hour?: number; // 0-23
 }
 
 export async function POST(req: Request) {
@@ -120,6 +121,7 @@ export async function POST(req: Request) {
                 target_cpa: dataItem.target_cpa ? Number(dataItem.target_cpa) : 0,
                 avg_target_cpa: dataItem.avg_target_cpa ? Number(dataItem.avg_target_cpa) : 0,
                 date: dataItem.date,
+                hour: dataItem.hour !== undefined ? Number(dataItem.hour) : 0,
             };
         });
 
@@ -128,7 +130,7 @@ export async function POST(req: Request) {
         const { error: insertError } = await supabaseAdmin
             .from('campaign_metrics')
             .upsert(rowsToInsert, {
-                onConflict: 'account_id,campaign_name,date',
+                onConflict: 'account_id,campaign_name,date,hour',
                 ignoreDuplicates: false // Precisamos atualizar valores, não ignorar
             });
 
