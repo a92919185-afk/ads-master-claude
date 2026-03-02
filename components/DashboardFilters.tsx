@@ -9,16 +9,20 @@ interface DashboardFiltersProps {
 export function DashboardFilters({ currentFilter }: DashboardFiltersProps) {
     const router = useRouter();
 
+    const formatDateLabel = (daysOffset: number) => {
+        const date = new Date(new Date().getTime() - daysOffset * 86400000);
+        return new Intl.DateTimeFormat('pt-BR', {
+            day: '2-digit', month: 'short'
+        }).format(date).toLowerCase();
+    };
+
     const filters = [
-        { label: 'Hoje', value: 'today' },
-        { label: 'Ontem', value: 'yesterday' },
-        { label: 'Esta semana (dom. até Hoje)', value: 'this_week' },
-        { label: '7 dias atrás', value: 'last_7_days' },
-        { label: 'Semana passada (de dom. a sáb.)', value: 'last_week' },
-        { label: '14 dias atrás', value: 'last_14_days' },
+        { label: `Hoje (${formatDateLabel(0)})`, value: 'today' },
+        { label: `Ontem (${formatDateLabel(1)})`, value: 'yesterday' },
+        { label: 'Últimos 7 dias', value: 'last_7_days' },
+        { label: 'Últimos 14 dias', value: 'last_14_days' },
+        { label: 'Últimos 30 dias', value: 'last_30_days' },
         { label: 'Este mês', value: 'this_month' },
-        { label: '30 dias atrás', value: 'last_30_days' },
-        { label: 'Último mês', value: 'last_month' },
         { label: 'Todo o período', value: 'all_time' },
     ];
 
