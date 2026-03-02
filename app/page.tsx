@@ -103,24 +103,41 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   const campaignMetrics = metrics || [];
 
-  // 3. Filter by selected campaign if applicable (for chart and cards)
+  // 3. Filter by selected campaign/product if applicable
   const filteredMetrics = selectedCampaignName
-    ? campaignMetrics.filter((m: any) => m.campaign_name === selectedCampaignName)
+    ? campaignMetrics.filter((m: any) => {
+      const cleanName = m.campaign_name.split('|').slice(0, 3).map((s: string) => s.trim()).join(' | ');
+      return cleanName === selectedCampaignName || m.campaign_name === selectedCampaignName;
+    })
     : campaignMetrics;
 
-  // 4. Aggregate metrics for the Table (1 row per campaign)
+  // 4. Aggregate metrics for the Table (Group by "Product" or "Clean Name")
   const summaryMap = filteredMetrics.reduce((acc: Record<string, any>, curr: any) => {
-    const key = curr.campaign_name;
-    if (!acc[key]) {
-      acc[key] = { ...curr };
+    // Normalização: Pegamos as 3 primeiras partes do nome (Produto | Geo | Guru)
+    // Isso remove sufixos como "| 26/02/26 | $50" que causam duplicação
+    const parts = curr.campaign_name.split('|').map((s: string) => s.trim());
+    const cleanName = parts.slice(0, 3).join(' | ');
+
+    if (!acc[cleanName]) {
+      acc[cleanName] = {
+        ...curr,
+        campaign_name: cleanName, // Usamos o nome limpo na tabela
+        original_names: [curr.campaign_name]
+      };
     } else {
-      acc[key].impressions += Number(curr.impressions) || 0;
-      acc[key].clicks += Number(curr.clicks) || 0;
-      acc[key].cost += Number(curr.cost) || 0;
-      acc[key].conversions += Number(curr.conversions) || 0;
-      acc[key].conversion_value += Number(curr.conversion_value) || 0;
-      acc[key].profit += Number(curr.profit) || 0;
-      // Budget/Status/shares: we keep the latest one from the first occurrence (since we ordered by date/hour desc)
+      acc[cleanName].impressions += Number(curr.impressions) || 0;
+      acc[cleanName].clicks += Number(curr.clicks) || 0;
+      acc[cleanName].cost += Number(curr.cost) || 0;
+      acc[cleanName].conversions += Number(curr.conversions) || 0;
+      acc[cleanName].conversion_value += Number(curr.conversion_value) || 0;
+      acc[cleanName].profit += Number(curr.profit) || 0;
+
+      if (!acc[cleanName].original_names.includes(curr.campaign_name)) {
+        acc[cleanName].original_names.push(curr.campaign_name);
+      }
+
+      // Para o orçamento, mostramos o maior ou o mais recente (já está ordenado desc)
+      acc[cleanName].budget = Math.max(acc[cleanName].budget || 0, curr.budget || 0);
     }
     return acc;
   }, {});
