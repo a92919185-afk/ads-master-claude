@@ -214,13 +214,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {/* ─── Header ──────────────────────────────────────────────────────── */}
         <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end border-b border-neutral-900 pb-5">
           <div>
-            <div className="flex items-center gap-3 mb-1.5">
-              <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)]" />
-              <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1.5">
+              <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)] shrink-0" />
+              <h1 className="text-2xl font-semibold tracking-tight text-neutral-100 whitespace-nowrap">
                 {selectedCampaignName ? 'Campanha: ' : 'AdsMaster'}
               </h1>
               {selectedCampaignName && (
-                <span className="text-lg font-mono text-emerald-400">{selectedCampaignName}</span>
+                <span className="text-lg font-mono text-emerald-400 break-all">{selectedCampaignName}</span>
               )}
             </div>
             <p className="text-[11px] font-medium tracking-widest text-neutral-600 uppercase">
