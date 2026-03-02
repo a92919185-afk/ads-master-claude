@@ -94,7 +94,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     `)
     .gte('date', startStr)
     .lte('date', endStr)
-    .order('date', { ascending: false });
+    .order('date', { ascending: false })
+    .order('hour', { ascending: false });
 
   if (error) {
     console.error('Error fetching metrics:', error);
@@ -102,18 +103,37 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   const campaignMetrics = metrics || [];
 
-  // 3. Filter by selected campaign if applicable
+  // 3. Filter by selected campaign if applicable (for chart and cards)
   const filteredMetrics = selectedCampaignName
     ? campaignMetrics.filter((m: any) => m.campaign_name === selectedCampaignName)
     : campaignMetrics;
 
-  // Calculate Aggregates based on filtered data
+  // 4. Aggregate metrics for the Table (1 row per campaign)
+  const summaryMap = filteredMetrics.reduce((acc: Record<string, any>, curr: any) => {
+    const key = curr.campaign_name;
+    if (!acc[key]) {
+      acc[key] = { ...curr };
+    } else {
+      acc[key].impressions += Number(curr.impressions) || 0;
+      acc[key].clicks += Number(curr.clicks) || 0;
+      acc[key].cost += Number(curr.cost) || 0;
+      acc[key].conversions += Number(curr.conversions) || 0;
+      acc[key].conversion_value += Number(curr.conversion_value) || 0;
+      acc[key].profit += Number(curr.profit) || 0;
+      // Budget/Status/shares: we keep the latest one from the first occurrence (since we ordered by date/hour desc)
+    }
+    return acc;
+  }, {});
+
+  const summaryMetrics = Object.values(summaryMap) as any[];
+
+  // Calculate Aggregates based on filtered data (for Cards)
   const totalProfit = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.profit) || 0), 0);
   const totalCost = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.cost) || 0), 0);
   const totalRevenue = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.conversion_value) || 0), 0);
   const totalClicks = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.clicks) || 0), 0);
 
-  // Simple trend logic for demo (comparing to a static baseline or just showing up if profit > 0)
+  // Simple trend logic for demo
   const profitTrend = totalProfit > 0 ? "up" : "down";
 
   return (
@@ -178,7 +198,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
         {/* Table Section */}
         <ProfitTable
-          metrics={campaignMetrics}
+          metrics={summaryMetrics}
           selectedCampaign={selectedCampaignName}
           currentFilter={filterKey}
         />
