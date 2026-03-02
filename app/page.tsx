@@ -7,9 +7,10 @@ import { supabase } from "@/utils/supabase";
 export const dynamic = 'force-dynamic'; // Prevent static generation errors on Vercel
 export const revalidate = 0;
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string, campaign?: string }> }) {
   const params = await searchParams;
   const filterKey = params?.filter || 'today';
+  const selectedCampaignName = params?.campaign;
 
   // Mapeamento Blindado de Datas (Resolvendo Fusos da Vercel que rodam em UTC)
   // 1. Descobrir qual é o dia atual no Brasil Exatamente Agora
@@ -101,11 +102,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   const campaignMetrics = metrics || [];
 
-  // Calculate Aggregates
-  const totalProfit = campaignMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.profit) || 0), 0);
-  const totalCost = campaignMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.cost) || 0), 0);
-  const totalRevenue = campaignMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.conversion_value) || 0), 0);
-  const totalClicks = campaignMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.clicks) || 0), 0);
+  // 3. Filter by selected campaign if applicable
+  const filteredMetrics = selectedCampaignName
+    ? campaignMetrics.filter((m: any) => m.campaign_name === selectedCampaignName)
+    : campaignMetrics;
+
+  // Calculate Aggregates based on filtered data
+  const totalProfit = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.profit) || 0), 0);
+  const totalCost = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.cost) || 0), 0);
+  const totalRevenue = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.conversion_value) || 0), 0);
+  const totalClicks = filteredMetrics.reduce((acc: number, curr: any) => acc + (Number(curr.clicks) || 0), 0);
 
   // Simple trend logic for demo (comparing to a static baseline or just showing up if profit > 0)
   const profitTrend = totalProfit > 0 ? "up" : "down";
@@ -119,10 +125,21 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
-              <h1 className="text-3xl font-semibold tracking-tight text-neutral-100">AdsMaster</h1>
+              <h1 className="text-3xl font-semibold tracking-tight text-neutral-100">
+                {selectedCampaignName ? "Detalhes da Campanha" : "AdsMaster"}
+              </h1>
             </div>
             <p className="text-sm font-medium tracking-wide text-neutral-500 uppercase">
-              Terminal de Lucro Consolidado
+              {selectedCampaignName ? (
+                <span className="flex items-center gap-2">
+                  <span className="text-emerald-400 font-mono">{selectedCampaignName}</span>
+                  <a href={`/?filter=${filterKey}`} className="text-[10px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded transition-colors normal-case">
+                    Limpar Filtro ×
+                  </a>
+                </span>
+              ) : (
+                "Terminal de Lucro Consolidado"
+              )}
             </p>
           </div>
           <DashboardFilters currentFilter={filterKey} />
@@ -157,10 +174,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
 
         {/* Chart Section */}
-        <PerformanceChart metrics={campaignMetrics} dateRange={{ start: startStr, end: endStr }} />
+        <PerformanceChart metrics={filteredMetrics} dateRange={{ start: startStr, end: endStr }} />
 
         {/* Table Section */}
-        <ProfitTable metrics={campaignMetrics} />
+        <ProfitTable
+          metrics={campaignMetrics}
+          selectedCampaign={selectedCampaignName}
+          currentFilter={filterKey}
+        />
 
         {campaignMetrics.length === 0 && !error && (
           <div className="mt-12 text-center py-20 border border-dashed border-neutral-800 rounded-2xl">

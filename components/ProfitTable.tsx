@@ -23,9 +23,11 @@ interface CampaignMetric {
 
 interface ProfitTableProps {
     metrics: CampaignMetric[];
+    selectedCampaign?: string;
+    currentFilter?: string;
 }
 
-export function ProfitTable({ metrics }: ProfitTableProps) {
+export function ProfitTable({ metrics, selectedCampaign, currentFilter }: ProfitTableProps) {
     return (
         <div className="mt-8 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/20 backdrop-blur-sm">
             <div className="border-b border-neutral-800 bg-neutral-900/40 px-6 py-5">
@@ -67,6 +69,7 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
                                 new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2 }).format(val / 100);
 
                             const isProfitable = metric.profit > 0;
+                            const isSelected = selectedCampaign === metric.campaign_name;
 
                             // Calculations
                             const conversionsCount = metric.conversions || 0;
@@ -121,7 +124,7 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
                             }
 
                             return (
-                                <tr key={metric.id} className={`transition-colors hover:bg-neutral-800/50 group ${rowStyle}`}>
+                                <tr key={metric.id} className={`transition-colors hover:bg-neutral-800/50 group ${isSelected ? 'bg-emerald-500/10 border-l-[3px] border-l-emerald-500' : rowStyle}`}>
                                     <td className="px-5 py-3 pl-4">
                                         <div className="flex flex-col">
                                             {metric.account ? (
@@ -133,9 +136,12 @@ export function ProfitTable({ metrics }: ProfitTableProps) {
                                                     Conta Não Vinculada
                                                 </span>
                                             )}
-                                            <span className="font-mono text-xs text-neutral-300 group-hover:text-white transition-colors">
+                                            <a
+                                                href={`?filter=${currentFilter || 'today'}&campaign=${encodeURIComponent(metric.campaign_name)}`}
+                                                className="font-mono text-xs text-neutral-300 group-hover:text-emerald-400 transition-colors cursor-pointer hover:underline decoration-emerald-500/50 underline-offset-4"
+                                            >
                                                 {metric.campaign_name}
-                                            </span>
+                                            </a>
                                         </div>
                                     </td>
                                     <td className="px-5 py-3 text-right font-mono text-xs text-neutral-400">{metric.budget ? formatCurrency(metric.budget) : '-'}</td>
