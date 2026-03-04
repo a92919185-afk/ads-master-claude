@@ -89,10 +89,24 @@ export function PerformanceChart({ metrics, dateRange, commissionValue }: Perfor
 
     return (
         <div className="h-72 w-full mt-8 p-4 rounded-xl border border-neutral-800 bg-neutral-900/20 backdrop-blur-sm">
-            <div className="mb-4">
+            <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold tracking-wide text-neutral-300 uppercase">
                     Timeline de Performance Global
                 </h2>
+                <div className="flex items-center gap-4 text-[10px] font-medium">
+                    <span className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                        <span className="text-neutral-500">Receita</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
+                        <span className="text-neutral-500">Custo</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+                        <span className="text-neutral-500">Lucro</span>
+                    </span>
+                </div>
             </div>
             <ResponsiveContainer width="100%" height="80%">
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>

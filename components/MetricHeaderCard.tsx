@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Activity, MousePointer2 } from 'lucide-re
 interface MetricHeaderCardProps {
     title: string;
     value: string | number;
+    previousValue?: number;
     subValue?: string;
     isCurrency?: boolean;
     suffix?: string;
@@ -10,7 +11,7 @@ interface MetricHeaderCardProps {
     icon: 'click' | 'cost' | 'profit' | 'conversion' | 'roi' | 'conversions';
 }
 
-export function MetricHeaderCard({ title, value, subValue, isCurrency, suffix, trend, icon }: MetricHeaderCardProps) {
+export function MetricHeaderCard({ title, value, previousValue, subValue, isCurrency, suffix, trend, icon }: MetricHeaderCardProps) {
     const getIcon = () => {
         switch (icon) {
             case 'click': return <MousePointer2 className="h-4 w-4 text-neutral-400" strokeWidth={1.5} />;
@@ -26,12 +27,22 @@ export function MetricHeaderCard({ title, value, subValue, isCurrency, suffix, t
         ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value))
         : new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(Number(value));
 
-    // Determine the text color for the value based strictly on trend or fallback to neutral white
     const valueColor = trend === 'down'
         ? 'text-rose-500'
         : trend === 'up'
             ? 'text-emerald-400'
             : 'text-neutral-100';
+
+    // Delta computation
+    const numValue = Number(value);
+    const hasDelta = previousValue !== undefined && previousValue !== null && previousValue !== 0;
+    const delta = hasDelta ? ((numValue - previousValue!) / Math.abs(previousValue!)) * 100 : null;
+    const deltaIsPositive = delta !== null && delta > 0;
+    const deltaIsNegative = delta !== null && delta < 0;
+    // For cost, positive delta = bad (more spending), negative = good
+    const deltaColor = icon === 'cost'
+        ? deltaIsPositive ? 'text-rose-500' : deltaIsNegative ? 'text-emerald-500' : 'text-neutral-600'
+        : deltaIsPositive ? 'text-emerald-500' : deltaIsNegative ? 'text-rose-500' : 'text-neutral-600';
 
     return (
         <div className="group relative overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 transition-all hover:bg-neutral-800/60 hover:border-neutral-700">
@@ -55,6 +66,15 @@ export function MetricHeaderCard({ title, value, subValue, isCurrency, suffix, t
                     </span>
                 )}
             </div>
+
+            {/* Delta badge */}
+            {delta !== null && (
+                <div className={`relative z-10 mt-2 flex items-center gap-1 text-[10px] font-mono font-bold ${deltaColor}`}>
+                    <span>{deltaIsPositive ? '▲' : deltaIsNegative ? '▼' : '•'}</span>
+                    <span>{deltaIsPositive ? '+' : ''}{delta.toFixed(1)}%</span>
+                    <span className="text-neutral-700 font-normal ml-0.5">vs anterior</span>
+                </div>
+            )}
         </div>
     );
 }

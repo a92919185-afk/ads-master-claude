@@ -7,18 +7,10 @@ import { Leaderboard } from "@/components/Leaderboard";
 import { HourlyHeatmap } from "@/components/HourlyHeatmap";
 import { ViewToggle } from "@/components/ViewToggle";
 import { supabase } from "@/utils/supabase";
+import { extractProductName } from "@/utils/helpers";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-// Extract product name from campaign name
-// e.g. "Ozoku - Search - $150" → "Ozoku"
-// e.g. "RYOKO_BR_EXACT_$180" → "RYOKO"
-function extractProductName(campaignName: string): string {
-  const clean = campaignName.replace(/\$\s*\d+(\.\d+)?/g, '').trim();
-  const parts = clean.split(/\s*[-|_/\\]\s*/).map(p => p.trim()).filter(p => p.length >= 2);
-  return parts.length > 0 ? parts[0] : campaignName.trim();
-}
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string; campaign?: string; view?: string; from?: string; to?: string; days?: string; anchor?: string }> }) {
   const params = await searchParams;
@@ -149,6 +141,34 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     : campaignMetrics;
 
   // ─── Aggregate per campaign (table & grid) ───────────────────────────────
+  // Step 1: Daily IS averages per campaign (IS should be averaged per day, not per hourly entry)
+  const dailyISMap: Record<string, Record<string, { absTop: number[]; top: number[]; is: number[] }>> = {};
+  filteredMetrics.forEach((m: any) => {
+    const key = m.campaign_name;
+    const d = m.date as string;
+    if (!dailyISMap[key]) dailyISMap[key] = {};
+    if (!dailyISMap[key][d]) dailyISMap[key][d] = { absTop: [], top: [], is: [] };
+    if (Number(m.search_absolute_top_impression_share)) dailyISMap[key][d].absTop.push(Number(m.search_absolute_top_impression_share));
+    if (Number(m.search_top_impression_share)) dailyISMap[key][d].top.push(Number(m.search_top_impression_share));
+    if (Number(m.search_impression_share)) dailyISMap[key][d].is.push(Number(m.search_impression_share));
+  });
+
+  function avgArr(arr: number[]): number {
+    return arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+  }
+
+  function computeDailyISAvg(campaignIS: Record<string, { absTop: number[]; top: number[]; is: number[] }>): { absTop: number; top: number; is: number } {
+    const days = Object.values(campaignIS);
+    if (days.length === 0) return { absTop: 0, top: 0, is: 0 };
+    const dailyAvgs = days.map(d => ({ absTop: avgArr(d.absTop), top: avgArr(d.top), is: avgArr(d.is) }));
+    return {
+      absTop: avgArr(dailyAvgs.map(d => d.absTop)),
+      top: avgArr(dailyAvgs.map(d => d.top)),
+      is: avgArr(dailyAvgs.map(d => d.is)),
+    };
+  }
+
+  // Step 2: Aggregate metrics per campaign
   const summaryMap = filteredMetrics.reduce((acc: Record<string, any>, curr: any) => {
     const key = curr.campaign_name;
     if (!acc[key]) {
@@ -160,23 +180,22 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       acc[key].conversions += Number(curr.conversions) || 0;
       acc[key].conversion_value += Number(curr.conversion_value) || 0;
       acc[key].profit += Number(curr.profit) || 0;
-      acc[key].search_absolute_top_impression_share += Number(curr.search_absolute_top_impression_share) || 0;
-      acc[key].search_top_impression_share += Number(curr.search_top_impression_share) || 0;
-      acc[key].search_impression_share += Number(curr.search_impression_share) || 0;
-      // Use most recent target_cpa / status / budget (data is sorted desc by date+hour)
-      // Keep first value (most recent) since reduce processes in order
       acc[key].entry_count += 1;
       acc[key].budget = Math.max(acc[key].budget || 0, curr.budget || 0);
     }
     return acc;
   }, {});
 
-  const summaryMetrics = Object.values(summaryMap).map((m: any) => ({
-    ...m,
-    search_absolute_top_impression_share: m.entry_count > 0 ? m.search_absolute_top_impression_share / m.entry_count : 0,
-    search_top_impression_share: m.entry_count > 0 ? m.search_top_impression_share / m.entry_count : 0,
-    search_impression_share: m.entry_count > 0 ? m.search_impression_share / m.entry_count : 0,
-  })) as any[];
+  // Step 3: Apply correct daily-weighted IS averages
+  const summaryMetrics = Object.values(summaryMap).map((m: any) => {
+    const isAvg = computeDailyISAvg(dailyISMap[m.campaign_name] || {});
+    return {
+      ...m,
+      search_absolute_top_impression_share: isAvg.absTop,
+      search_top_impression_share: isAvg.top,
+      search_impression_share: isAvg.is,
+    };
+  }) as any[];
 
   // ─── Product grouping ────────────────────────────────────────────────────
   const productMap: Record<string, any> = {};
@@ -218,6 +237,28 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const totalClicks = filteredMetrics.reduce((acc: number, c: any) => acc + (Number(c.clicks) || 0), 0);
   const totalConversions = filteredMetrics.reduce((acc: number, c: any) => acc + (Number(c.conversions) || 0), 0);
   const totalROI = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
+
+  // ─── Previous period KPIs (for delta comparison) ────────────────────────
+  const periodMs = endD.getTime() - startD.getTime();
+  const periodDays = Math.round(periodMs / 86400000) + 1;
+  const prevEndD = new Date(startD.getTime() - 86400000);
+  const prevStartD = new Date(prevEndD.getTime() - (periodDays - 1) * 86400000);
+  const prevStartStr = prevStartD.toISOString().split('T')[0];
+  const prevEndStr = prevEndD.toISOString().split('T')[0];
+
+  const { data: prevMetricsRaw } = await supabase
+    .from('campaign_metrics')
+    .select('profit, cost, conversion_value, clicks, conversions')
+    .gte('date', prevStartStr)
+    .lte('date', prevEndStr);
+
+  const prevMetrics = (prevMetricsRaw || []) as any[];
+  const prevProfit = prevMetrics.reduce((a: number, c: any) => a + (Number(c.profit) || 0), 0);
+  const prevCost = prevMetrics.reduce((a: number, c: any) => a + (Number(c.cost) || 0), 0);
+  const prevRevenue = prevMetrics.reduce((a: number, c: any) => a + (Number(c.conversion_value) || 0), 0);
+  const prevClicks = prevMetrics.reduce((a: number, c: any) => a + (Number(c.clicks) || 0), 0);
+  const prevConversions = prevMetrics.reduce((a: number, c: any) => a + (Number(c.conversions) || 0), 0);
+  const prevROI = prevCost > 0 ? (prevProfit / prevCost) * 100 : 0;
 
   // ─── Sparkline data: last 7 daily profits per campaign ──────────────────
   const dailyByCampaign: Record<string, Record<string, number>> = {};
@@ -293,6 +334,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <MetricHeaderCard
             title="Lucro Líquido"
             value={totalProfit}
+            previousValue={prevProfit}
             isCurrency
             trend={totalProfit > 0 ? 'up' : 'down'}
             icon="profit"
@@ -300,18 +342,21 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <MetricHeaderCard
             title="Investimento"
             value={totalCost}
+            previousValue={prevCost}
             isCurrency
             icon="cost"
           />
           <MetricHeaderCard
             title="Receita Bruta"
             value={totalRevenue}
+            previousValue={prevRevenue}
             isCurrency
             icon="conversion"
           />
           <MetricHeaderCard
             title="ROI Global"
             value={totalROI}
+            previousValue={prevROI}
             suffix="%"
             trend={totalROI > 0 ? 'up' : 'down'}
             icon="roi"
@@ -319,11 +364,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <MetricHeaderCard
             title="Conversões"
             value={totalConversions}
+            previousValue={prevConversions}
             icon="conversions"
           />
           <MetricHeaderCard
             title="Total Cliques"
             value={totalClicks}
+            previousValue={prevClicks}
             icon="click"
           />
         </div>
