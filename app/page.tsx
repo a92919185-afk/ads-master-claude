@@ -20,51 +20,62 @@ function extractProductName(campaignName: string): string {
   return parts.length > 0 ? parts[0] : campaignName.trim();
 }
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string; campaign?: string; view?: string }> }) {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string; campaign?: string; view?: string; from?: string; to?: string; days?: string; anchor?: string }> }) {
   const params = await searchParams;
   const filterKey = params?.filter || 'today';
   const selectedCampaignName = params?.campaign;
   const viewMode = params?.view === 'product' ? 'product' : 'campaign';
 
-  // Date calculation — UTC-noon strategy to avoid Vercel UTC edge issues
+  // ─── Date resolution — UTC-noon strategy to avoid Vercel UTC edge issues ───
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Sao_Paulo',
     year: 'numeric', month: '2-digit', day: '2-digit'
   });
   const [month, day, year] = formatter.format(new Date()).split('/');
   const todayBR = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0));
+  const yesterdayBR = new Date(todayBR.getTime() - 86400000);
 
   let startD = todayBR;
   let endD = todayBR;
 
   switch (filterKey) {
-    case 'today': break;
-    case 'yesterday':
-      startD = new Date(todayBR.getTime() - 86400000);
-      endD = new Date(todayBR.getTime() - 86400000);
+    // ── Single Day Presets ─────────────────────────────────────────
+    case 'today':
       break;
+    case 'yesterday':
+      startD = yesterdayBR;
+      endD = yesterdayBR;
+      break;
+
+    // ── Rolling Window Presets ─────────────────────────────────────
+    case 'last_7_days':
+      startD = new Date(todayBR.getTime() - 6 * 86400000);
+      break;
+    case 'last_14_days':
+      startD = new Date(todayBR.getTime() - 13 * 86400000);
+      break;
+    case 'last_30_days':
+      startD = new Date(todayBR.getTime() - 29 * 86400000);
+      break;
+
+    // ── Week-based Presets ─────────────────────────────────────────
     case 'this_week': {
+      // Sunday to today
       const dow = todayBR.getUTCDay();
       startD = new Date(todayBR.getTime() - dow * 86400000);
       break;
     }
-    case 'last_7_days':
-      startD = new Date(todayBR.getTime() - 6 * 86400000);
-      break;
     case 'last_week': {
+      // Previous Sunday to Saturday
       const dow = todayBR.getUTCDay();
       endD = new Date(todayBR.getTime() - (dow + 1) * 86400000);
       startD = new Date(endD.getTime() - 6 * 86400000);
       break;
     }
-    case 'last_14_days':
-      startD = new Date(todayBR.getTime() - 13 * 86400000);
-      break;
+
+    // ── Month-based Presets ────────────────────────────────────────
     case 'this_month':
       startD = new Date(Date.UTC(Number(year), Number(month) - 1, 1, 12, 0, 0));
-      break;
-    case 'last_30_days':
-      startD = new Date(todayBR.getTime() - 29 * 86400000);
       break;
     case 'last_month': {
       let pm = Number(month) - 2;
@@ -74,9 +85,48 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       endD = new Date(Date.UTC(py, pm + 1, 0, 12, 0, 0));
       break;
     }
+
+    // ── Full Range ────────────────────────────────────────────────
     case 'all_time':
       startD = new Date(Date.UTC(2020, 0, 1, 12, 0, 0));
       break;
+
+    // ── Custom: X days until today ────────────────────────────────
+    case 'custom_days_today': {
+      const days = Math.max(1, Math.min(999, parseInt(params?.days || '7', 10)));
+      startD = new Date(todayBR.getTime() - (days - 1) * 86400000);
+      endD = todayBR;
+      break;
+    }
+
+    // ── Custom: X days until yesterday ────────────────────────────
+    case 'custom_days_yesterday': {
+      const days = Math.max(1, Math.min(999, parseInt(params?.days || '7', 10)));
+      startD = new Date(yesterdayBR.getTime() - (days - 1) * 86400000);
+      endD = yesterdayBR;
+      break;
+    }
+
+    // ── Custom: Calendar range (from → to) ────────────────────────
+    case 'custom_range': {
+      const rawFrom = params?.from;
+      const rawTo = params?.to;
+      if (rawFrom && rawTo && /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) && /^\d{4}-\d{2}-\d{2}$/.test(rawTo)) {
+        const [fy, fm, fd] = rawFrom.split('-').map(Number);
+        const [ty, tm, td] = rawTo.split('-').map(Number);
+        startD = new Date(Date.UTC(fy, fm - 1, fd, 12, 0, 0));
+        endD = new Date(Date.UTC(ty, tm - 1, td, 12, 0, 0));
+        // Ensure start <= end
+        if (startD > endD) {
+          const tmp = startD;
+          startD = endD;
+          endD = tmp;
+        }
+        // Cap at today
+        if (endD > todayBR) endD = todayBR;
+      }
+      break;
+    }
   }
 
   const startStr = startD.toISOString().split('T')[0];
