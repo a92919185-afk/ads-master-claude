@@ -62,11 +62,13 @@ export function Leaderboard({ campaigns, currentFilter, isProductView }: Leaderb
         const spentPct = revenueBase > 0 ? (c.cost / revenueBase) * 100 : 0;
 
         // Color coding for % gasto
-        const spentColor = conv > 0
-            // With conversions: lower = better margin to scale
-            ? spentPct <= 40 ? 'text-emerald-300' : spentPct <= 70 ? 'text-emerald-500' : spentPct <= 100 ? 'text-orange-400' : 'text-rose-400'
-            // Without conversions: how close to burning 1 commission
-            : spentPct >= 70 ? 'text-rose-400' : spentPct >= 50 ? 'text-orange-400' : 'text-emerald-500';
+        const spentColor = spentPct === 0
+            ? 'text-neutral-600'
+            : conv > 0
+                // With conversions: lower = better margin to scale
+                ? spentPct <= 40 ? 'text-emerald-300' : spentPct <= 70 ? 'text-emerald-500' : spentPct <= 100 ? 'text-orange-400' : 'text-rose-400'
+                // Without conversions: how close to burning 1 commission
+                : spentPct >= 70 ? 'text-rose-400' : spentPct >= 50 ? 'text-orange-400' : 'text-emerald-500';
 
         return (
             <a
