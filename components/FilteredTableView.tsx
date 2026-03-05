@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { computeStatus, STATUS_ORDER, STATUS_DISPLAY_ORDER, STATUS_PILL } from '@/utils/campaignStatus';
 import type { StatusInfo } from '@/utils/campaignStatus';
 import { fmtCurrency, fmtDecimal, fmtPercent, fmtIntBR } from '@/utils/formatters';
@@ -42,41 +42,52 @@ interface ColumnDef {
     label: string;
     sortable: boolean;
     align: 'left' | 'center' | 'right';
-    minWidth?: string;
+    defaultWidth?: number;
     bold?: boolean;
 }
 
 const COLUMNS: ColumnDef[] = [
-    { id: 'campaign', label: 'Conta / Campanha', sortable: true, align: 'left', minWidth: '220px' },
-    { id: 'perf', label: 'Perf. (ROI%)', sortable: true, align: 'left', minWidth: '150px' },
-    { id: 'budget', label: 'Orçamento', sortable: true, align: 'right' },
-    { id: 'status', label: 'Status', sortable: true, align: 'center' },
-    { id: 'cli_conv', label: 'Cli/Conv.', sortable: true, align: 'right' },
-    { id: 'impressions', label: 'Impr.', sortable: true, align: 'right' },
-    { id: 'clicks', label: 'Cliques', sortable: true, align: 'right' },
-    { id: 'cpc', label: 'CPC méd.', sortable: true, align: 'right' },
-    { id: 'cost', label: 'Custo', sortable: true, align: 'right' },
-    { id: 'abs_top_is', label: '% 1ª pos', sortable: true, align: 'right' },
-    { id: 'top_is', label: '% Sup', sortable: true, align: 'right' },
-    { id: 'is', label: 'Parc.IS', sortable: true, align: 'right' },
-    { id: 'conversions', label: 'Conv.', sortable: true, align: 'right' },
-    { id: 'breakeven', label: 'Break-even', sortable: false, align: 'right' },
-    { id: 'cost_conv', label: 'Custo/Conv.', sortable: true, align: 'right' },
-    { id: 'revenue', label: 'Receita', sortable: true, align: 'right' },
-    { id: 'profit', label: 'Lucro Net', sortable: true, align: 'right', bold: true },
-    { id: 'roi', label: 'ROI %', sortable: true, align: 'right', bold: true },
-    { id: 'target_cpa', label: 'CPA des.', sortable: true, align: 'right' },
-    { id: 'avg_cpa', label: 'CPA md.', sortable: true, align: 'right' },
+    { id: 'campaign', label: 'Conta / Campanha', sortable: true, align: 'left', defaultWidth: 240 },
+    { id: 'ads_status', label: 'Ads', sortable: true, align: 'center', defaultWidth: 80 },
+    { id: 'perf', label: 'Perf. (ROI%)', sortable: true, align: 'left', defaultWidth: 160 },
+    { id: 'budget', label: 'Orçamento', sortable: true, align: 'right', defaultWidth: 100 },
+    { id: 'status', label: 'Status', sortable: true, align: 'center', defaultWidth: 110 },
+    { id: 'cli_conv', label: 'Cli/Conv.', sortable: true, align: 'right', defaultWidth: 85 },
+    { id: 'impressions', label: 'Impr.', sortable: true, align: 'right', defaultWidth: 90 },
+    { id: 'clicks', label: 'Cliques', sortable: true, align: 'right', defaultWidth: 85 },
+    { id: 'cpc', label: 'CPC méd.', sortable: true, align: 'right', defaultWidth: 90 },
+    { id: 'cost', label: 'Custo', sortable: true, align: 'right', defaultWidth: 100 },
+    { id: 'abs_top_is', label: '% 1ª pos', sortable: true, align: 'right', defaultWidth: 85 },
+    { id: 'top_is', label: '% Sup', sortable: true, align: 'right', defaultWidth: 80 },
+    { id: 'is', label: 'Parc.IS', sortable: true, align: 'right', defaultWidth: 80 },
+    { id: 'conversions', label: 'Conv.', sortable: true, align: 'right', defaultWidth: 80 },
+    { id: 'breakeven', label: 'Break-even', sortable: false, align: 'right', defaultWidth: 95 },
+    { id: 'cost_conv', label: 'Custo/Conv.', sortable: true, align: 'right', defaultWidth: 100 },
+    { id: 'revenue', label: 'Receita', sortable: true, align: 'right', defaultWidth: 100 },
+    { id: 'profit', label: 'Lucro Net', sortable: true, align: 'right', bold: true, defaultWidth: 110 },
+    { id: 'roi', label: 'ROI %', sortable: true, align: 'right', bold: true, defaultWidth: 90 },
+    { id: 'target_cpa', label: 'CPA des.', sortable: true, align: 'right', defaultWidth: 90 },
+    { id: 'avg_cpa', label: 'CPA md.', sortable: true, align: 'right', defaultWidth: 90 },
 ];
 
 const DEFAULT_ORDER = COLUMNS.map(c => c.id);
 const COL_MAP = Object.fromEntries(COLUMNS.map(c => [c.id, c]));
+const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(COLUMNS.map(c => [c.id, c.defaultWidth ?? 100]));
+
+// Google Ads status display mapping
+const ADS_STATUS_MAP: Record<string, { label: string; style: string }> = {
+    'ENABLED': { label: 'Ativa', style: 'text-emerald-400 bg-emerald-950/60 border-emerald-800/60' },
+    'PAUSED': { label: 'Pausada', style: 'text-amber-400 bg-amber-950/60 border-amber-800/60' },
+    'REMOVED': { label: 'Removida', style: 'text-rose-400 bg-rose-950/60 border-rose-800/60' },
+    'UNKNOWN': { label: '—', style: 'text-neutral-600 bg-neutral-900/40 border-neutral-800' },
+};
 
 // Sort value extractors for each column
 function getSortValue(colId: string, m: EnrichedMetric): number | string {
     const conv = m.conversions ?? 0;
     switch (colId) {
         case 'campaign': return m.campaign_name.toLowerCase();
+        case 'ads_status': return m.status === 'ENABLED' ? 0 : m.status === 'PAUSED' ? 1 : 2;
         case 'perf': return m._s.roi;
         case 'budget': return Number(m.budget) || 0;
         case 'status': return STATUS_ORDER[m._s.label] ?? 0;
@@ -179,10 +190,18 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
     // Column order state (for drag reorder)
     const [columnOrder, setColumnOrder] = useState<string[]>(DEFAULT_ORDER);
 
+    // Column widths state (for resize)
+    const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_WIDTHS);
+
     // Drag-and-drop refs
     const dragColRef = useRef<string | null>(null);
     const dragOverColRef = useRef<string | null>(null);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+    // Resize refs
+    const resizingCol = useRef<string | null>(null);
+    const resizeStartX = useRef<number>(0);
+    const resizeStartW = useRef<number>(0);
 
     // ─── Column sort handler ──────────────────────────────────────────────────
     const handleHeaderClick = useCallback((colId: string) => {
@@ -235,6 +254,35 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
         dragColRef.current = null;
         dragOverColRef.current = null;
         setDragOverId(null);
+    }, []);
+
+    // ─── Resize handlers ──────────────────────────────────────────────────────
+    const handleResizeMouseDown = useCallback((e: React.MouseEvent, colId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizingCol.current = colId;
+        resizeStartX.current = e.clientX;
+        resizeStartW.current = columnWidths[colId] || DEFAULT_WIDTHS[colId] || 100;
+    }, [columnWidths]);
+
+    useEffect(() => {
+        const onMouseMove = (e: MouseEvent) => {
+            if (!resizingCol.current) return;
+            const delta = e.clientX - resizeStartX.current;
+            const newWidth = Math.max(50, resizeStartW.current + delta);
+            setColumnWidths(prev => ({ ...prev, [resizingCol.current!]: newWidth }));
+        };
+
+        const onMouseUp = () => {
+            resizingCol.current = null;
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        return () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
     }, []);
 
     // ─── Enrich ───────────────────────────────────────────────────────────────
@@ -367,6 +415,17 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                         </div>
                     </td>
                 );
+            case 'ads_status': {
+                const rawStatus = (metric.status || 'UNKNOWN').toUpperCase();
+                const statusInfo = ADS_STATUS_MAP[rawStatus] || ADS_STATUS_MAP['UNKNOWN'];
+                return (
+                    <td key={colId} className="px-2 py-2.5 text-center">
+                        <span className={`text-[9px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border ${statusInfo.style}`}>
+                            {statusInfo.label}
+                        </span>
+                    </td>
+                );
+            }
             case 'perf':
                 return <td key={colId} className="px-4 py-2.5"><PerfBar roi={s.roi} maxAbsRoi={maxAbsRoi} barColor={s.barColor} /></td>;
             case 'budget':
@@ -434,6 +493,8 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
         switch (colId) {
             case 'campaign':
                 return <td key={colId} className="px-4 py-3 pl-3 text-[10px] font-bold tracking-widest text-neutral-400 uppercase">Total ({filtered.length})</td>;
+            case 'ads_status':
+                return <td key={colId} className="px-4 py-3" />;
             case 'perf':
                 return <td key={colId} className="px-4 py-3"><span className={`text-[10px] font-mono font-bold ${totalROI >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{totalROI >= 0 ? '+' : ''}{totalROI.toFixed(0)}%</span></td>;
             case 'impressions':
@@ -583,8 +644,15 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                     </div>
                 </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left whitespace-nowrap">
-                        {/* ─── THEAD (dynamic column order) ───────────────────── */}
+                    <table className="text-left whitespace-nowrap" style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                        {/* ─── COLGROUP (explicit widths for resize) ───────────── */}
+                        <colgroup>
+                            {orderedCols.map(col => (
+                                <col key={col.id} style={{ width: columnWidths[col.id] || col.defaultWidth || 100 }} />
+                            ))}
+                        </colgroup>
+
+                        {/* ─── THEAD (dynamic column order + resize handles) ──── */}
                         <thead className="bg-neutral-900/30">
                             <tr>
                                 {orderedCols.map(col => {
@@ -603,19 +671,28 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                                             onDragEnd={handleDragEnd}
                                             onClick={() => handleHeaderClick(col.id)}
                                             className={[
-                                                'px-4 py-3 text-[9px] tracking-widest uppercase border-b border-neutral-800 select-none transition-all',
+                                                'px-4 py-3 text-[9px] tracking-widest uppercase border-b border-neutral-800 select-none transition-all relative overflow-visible',
                                                 col.bold ? 'font-bold text-neutral-200' : 'font-semibold text-neutral-600',
                                                 col.sortable ? 'cursor-pointer hover:text-neutral-300 hover:bg-neutral-800/30' : 'cursor-grab',
                                                 isSorted ? 'bg-neutral-800/20 text-neutral-300' : '',
-                                                isDragOver ? 'border-l-2 border-l-violet-500' : '',
+                                                isDragOver ? 'border-l-2 border-l-emerald-500' : '',
                                                 textAlign,
                                             ].join(' ')}
-                                            style={{ minWidth: col.minWidth, cursor: 'grab' }}
+                                            style={{ cursor: 'grab' }}
                                         >
-                                            <span className="inline-flex items-center gap-0.5">
+                                            <span className="inline-flex items-center gap-0.5 overflow-hidden text-ellipsis">
                                                 {col.label}
                                                 {col.sortable && <SortArrow dir={arrow} />}
                                             </span>
+                                            {/* Resize handle */}
+                                            <div
+                                                onMouseDown={(e) => handleResizeMouseDown(e, col.id)}
+                                                className="absolute top-0 right-0 w-[5px] h-full cursor-col-resize hover:bg-emerald-500/40 active:bg-emerald-500/60 z-10"
+                                                title="Arrastar para redimensionar"
+                                                onClick={(e) => e.stopPropagation()}
+                                                draggable={false}
+                                                onDragStart={(e) => e.stopPropagation()}
+                                            />
                                         </th>
                                     );
                                 })}
