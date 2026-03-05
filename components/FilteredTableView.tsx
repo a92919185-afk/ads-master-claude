@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { computeStatus, STATUS_ORDER, STATUS_DISPLAY_ORDER, STATUS_PILL } from '@/utils/campaignStatus';
 import type { StatusInfo } from '@/utils/campaignStatus';
 import { fmtCurrency, fmtDecimal, fmtPercent, fmtIntBR } from '@/utils/formatters';
@@ -36,16 +36,70 @@ interface FilteredTableViewProps {
     sparklineData?: Record<string, number[]>;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const SORT_OPTIONS = [
-    { key: 'profit_desc', label: '↓ Maior Lucro' },
-    { key: 'profit_asc', label: '↑ Maior Perda' },
-    { key: 'roi_desc', label: '↓ Maior ROI%' },
-    { key: 'cost_desc', label: '↑ Maior Custo' },
-    { key: 'conv_desc', label: '↓ Mais Conv.' },
-    { key: 'risk', label: '🔴 Urgência' },
+// ─── Column Definitions ───────────────────────────────────────────────────────
+interface ColumnDef {
+    id: string;
+    label: string;
+    sortable: boolean;
+    align: 'left' | 'center' | 'right';
+    minWidth?: string;
+    bold?: boolean;
+}
+
+const COLUMNS: ColumnDef[] = [
+    { id: 'campaign', label: 'Conta / Campanha', sortable: true, align: 'left', minWidth: '220px' },
+    { id: 'perf', label: 'Perf. (ROI%)', sortable: true, align: 'left', minWidth: '150px' },
+    { id: 'budget', label: 'Orçamento', sortable: true, align: 'right' },
+    { id: 'status', label: 'Status', sortable: true, align: 'center' },
+    { id: 'cli_conv', label: 'Cli/Conv.', sortable: true, align: 'right' },
+    { id: 'impressions', label: 'Impr.', sortable: true, align: 'right' },
+    { id: 'clicks', label: 'Cliques', sortable: true, align: 'right' },
+    { id: 'cpc', label: 'CPC méd.', sortable: true, align: 'right' },
+    { id: 'cost', label: 'Custo', sortable: true, align: 'right' },
+    { id: 'abs_top_is', label: '% 1ª pos', sortable: true, align: 'right' },
+    { id: 'top_is', label: '% Sup', sortable: true, align: 'right' },
+    { id: 'is', label: 'Parc.IS', sortable: true, align: 'right' },
+    { id: 'conversions', label: 'Conv.', sortable: true, align: 'right' },
+    { id: 'breakeven', label: 'Break-even', sortable: false, align: 'right' },
+    { id: 'cost_conv', label: 'Custo/Conv.', sortable: true, align: 'right' },
+    { id: 'revenue', label: 'Receita', sortable: true, align: 'right' },
+    { id: 'profit', label: 'Lucro Net', sortable: true, align: 'right', bold: true },
+    { id: 'roi', label: 'ROI %', sortable: true, align: 'right', bold: true },
+    { id: 'target_cpa', label: 'CPA des.', sortable: true, align: 'right' },
+    { id: 'avg_cpa', label: 'CPA md.', sortable: true, align: 'right' },
 ];
 
+const DEFAULT_ORDER = COLUMNS.map(c => c.id);
+const COL_MAP = Object.fromEntries(COLUMNS.map(c => [c.id, c]));
+
+// Sort value extractors for each column
+function getSortValue(colId: string, m: EnrichedMetric): number | string {
+    const conv = m.conversions ?? 0;
+    switch (colId) {
+        case 'campaign': return m.campaign_name.toLowerCase();
+        case 'perf': return m._s.roi;
+        case 'budget': return Number(m.budget) || 0;
+        case 'status': return STATUS_ORDER[m._s.label] ?? 0;
+        case 'cli_conv': return conv > 0 ? m.clicks / conv : 0;
+        case 'impressions': return Number(m.impressions) || 0;
+        case 'clicks': return m.clicks;
+        case 'cpc': return m.clicks > 0 ? m.cost / m.clicks : 0;
+        case 'cost': return m.cost;
+        case 'abs_top_is': return Number(m.search_absolute_top_impression_share) || 0;
+        case 'top_is': return Number(m.search_top_impression_share) || 0;
+        case 'is': return Number(m.search_impression_share) || 0;
+        case 'conversions': return conv;
+        case 'cost_conv': return conv > 0 ? m.cost / conv : 0;
+        case 'revenue': return m.conversion_value;
+        case 'profit': return m.profit;
+        case 'roi': return m._s.roi;
+        case 'target_cpa': return Number(m.target_cpa) || 0;
+        case 'avg_cpa': return Number(m.avg_target_cpa) || 0;
+        default: return 0;
+    }
+}
+
+// ─── Threshold Filters ────────────────────────────────────────────────────────
 const THRESHOLD_OPTIONS: { key: string; label: string; fn: (m: EnrichedMetric) => boolean }[] = [
     { key: 'risk', label: 'Em Risco', fn: m => ['ABORTAR', 'ALERTA'].includes(m._s.label) },
     { key: 'profitable', label: 'Lucrativas', fn: m => ['LUCRO', 'ROI BRUTAL'].includes(m._s.label) },
@@ -93,10 +147,7 @@ function PerfBar({ roi, maxAbsRoi, barColor }: { roi: number; maxAbsRoi: number;
     return (
         <div className="flex items-center gap-2 min-w-[110px]">
             <div className="relative h-1.5 rounded-full bg-neutral-800 overflow-hidden" style={{ width: 72 }}>
-                <div
-                    className="absolute inset-y-0 left-0 rounded-full"
-                    style={{ width: `${pct}%`, background: barColor }}
-                />
+                <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, background: barColor }} />
             </div>
             <span className="text-[9px] font-mono font-bold w-12 text-right shrink-0" style={{ color: barColor }}>
                 {roi >= 0 ? '+' : ''}{roi.toFixed(0)}%
@@ -105,27 +156,99 @@ function PerfBar({ roi, maxAbsRoi, barColor }: { roi: number; maxAbsRoi: number;
     );
 }
 
+// ─── Sort Arrow Indicator ─────────────────────────────────────────────────────
+function SortArrow({ dir }: { dir: 'asc' | 'desc' | null }) {
+    if (!dir) return <span className="text-neutral-800 ml-1 text-[8px]">⇅</span>;
+    return (
+        <span className={`ml-1 text-[9px] ${dir === 'asc' ? 'text-blue-400' : 'text-amber-400'}`}>
+            {dir === 'asc' ? '▲' : '▼'}
+        </span>
+    );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sparklineData }: FilteredTableViewProps) {
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
-    const [sortKey, setSortKey] = useState<string>('profit_desc');
     const [productFilter, setProductFilter] = useState<string | null>(null);
     const [thresholdKey, setThresholdKey] = useState<string | null>(null);
 
-    // Enrich all metrics with status (once)
+    // Column sort state
+    const [sortCol, setSortCol] = useState<string>('profit');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+    // Column order state (for drag reorder)
+    const [columnOrder, setColumnOrder] = useState<string[]>(DEFAULT_ORDER);
+
+    // Drag-and-drop refs
+    const dragColRef = useRef<string | null>(null);
+    const dragOverColRef = useRef<string | null>(null);
+    const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+    // ─── Column sort handler ──────────────────────────────────────────────────
+    const handleHeaderClick = useCallback((colId: string) => {
+        const col = COL_MAP[colId];
+        if (!col?.sortable) return;
+        if (sortCol === colId) {
+            setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+        } else {
+            setSortCol(colId);
+            setSortDir('desc');
+        }
+    }, [sortCol]);
+
+    // ─── Drag handlers ───────────────────────────────────────────────────────
+    const handleDragStart = useCallback((colId: string) => {
+        dragColRef.current = colId;
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent, colId: string) => {
+        e.preventDefault();
+        dragOverColRef.current = colId;
+        setDragOverId(colId);
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        const from = dragColRef.current;
+        const to = dragOverColRef.current;
+        if (!from || !to || from === to) {
+            dragColRef.current = null;
+            dragOverColRef.current = null;
+            setDragOverId(null);
+            return;
+        }
+        setColumnOrder(prev => {
+            const arr = [...prev];
+            const fromIdx = arr.indexOf(from);
+            const toIdx = arr.indexOf(to);
+            if (fromIdx === -1 || toIdx === -1) return prev;
+            arr.splice(fromIdx, 1);
+            arr.splice(toIdx, 0, from);
+            return arr;
+        });
+        dragColRef.current = null;
+        dragOverColRef.current = null;
+        setDragOverId(null);
+    }, []);
+
+    const handleDragEnd = useCallback(() => {
+        dragColRef.current = null;
+        dragOverColRef.current = null;
+        setDragOverId(null);
+    }, []);
+
+    // ─── Enrich ───────────────────────────────────────────────────────────────
     const enriched = useMemo<EnrichedMetric[]>(
         () => metrics.map(m => ({ ...m, _s: computeStatus(m) })),
         [metrics]
     );
 
-    // Status counts for pills
     const statusCounts = useMemo(() => {
         const c: Record<string, number> = {};
         enriched.forEach(m => { c[m._s.label] = (c[m._s.label] || 0) + 1; });
         return c;
     }, [enriched]);
 
-    // Product groups for product pills
     const productGroups = useMemo(() => {
         const g: Record<string, { profit: number; cost: number; count: number }> = {};
         enriched.forEach(m => {
@@ -140,7 +263,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
 
     const hasMultipleProducts = Object.keys(productGroups).length > 1;
 
-    // Filtered + sorted result
+    // ─── Filter + Sort ────────────────────────────────────────────────────────
     const filtered = useMemo<EnrichedMetric[]>(() => {
         let r = [...enriched];
         if (statusFilter) r = r.filter(m => m._s.label === statusFilter);
@@ -150,20 +273,21 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
             if (opt) r = r.filter(opt.fn);
         }
 
+        // Sort by the active column header
         r.sort((a, b) => {
-            switch (sortKey) {
-                case 'profit_desc': return b.profit - a.profit;
-                case 'profit_asc': return a.profit - b.profit;
-                case 'roi_desc': return b._s.roi - a._s.roi;
-                case 'cost_desc': return b.cost - a.cost;
-                case 'conv_desc': return (b.conversions ?? 0) - (a.conversions ?? 0);
-                case 'risk': return (STATUS_ORDER[b._s.label] ?? 0) - (STATUS_ORDER[a._s.label] ?? 0);
-                default: return b.profit - a.profit;
+            const va = getSortValue(sortCol, a);
+            const vb = getSortValue(sortCol, b);
+            let cmp = 0;
+            if (typeof va === 'string' && typeof vb === 'string') {
+                cmp = va.localeCompare(vb);
+            } else {
+                cmp = (va as number) - (vb as number);
             }
+            return sortDir === 'desc' ? -cmp : cmp;
         });
 
         return r;
-    }, [enriched, statusFilter, productFilter, thresholdKey, sortKey]);
+    }, [enriched, statusFilter, productFilter, thresholdKey, sortCol, sortDir]);
 
     const hiddenCount = metrics.length - filtered.length;
     const isFiltered = !!(statusFilter || productFilter || thresholdKey);
@@ -173,7 +297,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
         [filtered]
     );
 
-    // ─── Totals for tfoot ────────────────────────────────────────────────────
+    // ─── Totals ───────────────────────────────────────────────────────────────
     const totals = useMemo(() => {
         return filtered.reduce(
             (acc, m) => {
@@ -192,17 +316,154 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
     const totalROI = totals.cost > 0 ? (totals.profit / totals.cost) * 100 : 0;
     const totalCPC = totals.clicks > 0 ? totals.cost / totals.clicks : 0;
 
+    // ─── Helpers ──────────────────────────────────────────────────────────────
     const clearAll = () => {
         setStatusFilter(null);
         setProductFilter(null);
         setThresholdKey(null);
-        setSortKey('profit_desc');
+        setSortCol('profit');
+        setSortDir('desc');
     };
 
     const toggleStatus = (s: string) => setStatusFilter(v => v === s ? null : s);
     const toggleProduct = (p: string) => setProductFilter(v => v === p ? null : p);
     const toggleThreshold = (k: string) => setThresholdKey(v => v === k ? null : k);
 
+    // ─── Cell renderer (per column ID) ────────────────────────────────────────
+    function renderCell(colId: string, metric: EnrichedMetric): React.ReactNode {
+        const s = metric._s;
+        const conversions = metric.conversions ?? 0;
+        const clicksPerConv = conversions > 0 ? metric.clicks / conversions : 0;
+        const avgCpc = metric.clicks > 0 ? metric.cost / metric.clicks : 0;
+        const costPerConv = conversions > 0 ? metric.cost / conversions : 0;
+        const showMarginBar = s.extractedCommission > 0 && conversions === 0 && metric.cost > 0;
+        const consumption = showMarginBar ? (metric.cost / s.extractedCommission) * 100 : 0;
+        const breakeven = conversions === 0 && s.estimatedCommission > 0 && metric.cost > 0
+            ? Math.ceil(metric.cost / s.estimatedCommission) : null;
+        const sparkline = sparklineData?.[metric.campaign_name];
+
+        const cls = "px-4 py-2.5 font-mono text-[11px]";
+
+        switch (colId) {
+            case 'campaign':
+                return (
+                    <td key={colId} className="px-4 py-2.5 pl-3">
+                        <div className="flex flex-col gap-0.5">
+                            {metric.account
+                                ? <span className="text-[9px] uppercase tracking-wider text-neutral-600">{metric.account.name} <span className="text-neutral-800">|</span> {metric.account.google_ads_account_id}</span>
+                                : <span className="text-[9px] uppercase tracking-wider text-neutral-700">Conta Não Vinculada</span>
+                            }
+                            <div className="flex items-center gap-2">
+                                <a
+                                    href={`?filter=${currentFilter || 'today'}&campaign=${encodeURIComponent(metric.campaign_name)}`}
+                                    className="font-mono text-[11px] text-neutral-300 group-hover:text-emerald-400 transition-colors hover:underline decoration-emerald-500/50 underline-offset-4 truncate max-w-[180px]"
+                                    title={metric.campaign_name}
+                                >
+                                    {metric.campaign_name}
+                                </a>
+                                {sparkline && <Sparkline data={sparkline} />}
+                            </div>
+                            {showMarginBar && <MarginBar consumption={consumption} commission={s.extractedCommission} />}
+                        </div>
+                    </td>
+                );
+            case 'perf':
+                return <td key={colId} className="px-4 py-2.5"><PerfBar roi={s.roi} maxAbsRoi={maxAbsRoi} barColor={s.barColor} /></td>;
+            case 'budget':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.budget ? fmtCurrency(metric.budget) : '—'}</td>;
+            case 'status':
+                return (
+                    <td key={colId} className="px-4 py-2.5 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                            <span className={`text-[9px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border ${s.badgeStyle}`}>{s.label}</span>
+                            {conversions === 0 && s.estimatedCommission > 0 && metric.cost > 0 && (
+                                <span className="text-[8px] font-mono text-neutral-600">{fmtCurrency(metric.cost)}/{fmtCurrency(s.estimatedCommission)}</span>
+                            )}
+                        </div>
+                    </td>
+                );
+            case 'cli_conv':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{fmtDecimal(clicksPerConv)}</td>;
+            case 'impressions':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.impressions ? fmtIntBR(metric.impressions) : '—'}</td>;
+            case 'clicks':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{fmtIntBR(metric.clicks)}</td>;
+            case 'cpc':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{fmtCurrency(avgCpc)}</td>;
+            case 'cost':
+                return <td key={colId} className={`${cls} text-right text-rose-400/70`}>{fmtCurrency(metric.cost)}</td>;
+            case 'abs_top_is':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.search_absolute_top_impression_share ? fmtPercent(metric.search_absolute_top_impression_share) : '—'}</td>;
+            case 'top_is':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.search_top_impression_share ? fmtPercent(metric.search_top_impression_share) : '—'}</td>;
+            case 'is':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.search_impression_share ? fmtPercent(metric.search_impression_share) : '—'}</td>;
+            case 'conversions':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{conversions > 0 ? fmtDecimal(conversions) : '—'}</td>;
+            case 'breakeven':
+                return (
+                    <td key={colId} className={`${cls} text-right`}>
+                        {conversions > 0
+                            ? <span className="text-emerald-500">✓</span>
+                            : breakeven !== null
+                                ? <span className="text-orange-400 font-bold">{breakeven} conv.</span>
+                                : <span className="text-neutral-700">—</span>
+                        }
+                    </td>
+                );
+            case 'cost_conv':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{fmtCurrency(costPerConv)}</td>;
+            case 'revenue':
+                return <td key={colId} className={`${cls} text-right text-emerald-400/70`}>{fmtCurrency(metric.conversion_value)}</td>;
+            case 'profit':
+                return <td key={colId} className={`${cls} text-right font-bold ${metric.profit > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{metric.profit > 0 ? '+' : ''}{fmtCurrency(metric.profit)}</td>;
+            case 'roi':
+                return <td key={colId} className={`${cls} text-right font-bold ${metric.profit > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{fmtPercent(metric._s.roi)}</td>;
+            case 'target_cpa':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.target_cpa ? fmtCurrency(metric.target_cpa) : '—'}</td>;
+            case 'avg_cpa':
+                return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.avg_target_cpa ? fmtCurrency(metric.avg_target_cpa) : '—'}</td>;
+            default:
+                return <td key={colId} className="px-4 py-2.5">—</td>;
+        }
+    }
+
+    // ─── Footer cell renderer ─────────────────────────────────────────────────
+    function renderFooterCell(colId: string): React.ReactNode {
+        const cls = "px-4 py-3 text-right font-mono text-[10px] font-bold";
+        switch (colId) {
+            case 'campaign':
+                return <td key={colId} className="px-4 py-3 pl-3 text-[10px] font-bold tracking-widest text-neutral-400 uppercase">Total ({filtered.length})</td>;
+            case 'perf':
+                return <td key={colId} className="px-4 py-3"><span className={`text-[10px] font-mono font-bold ${totalROI >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{totalROI >= 0 ? '+' : ''}{totalROI.toFixed(0)}%</span></td>;
+            case 'impressions':
+                return <td key={colId} className={`${cls} text-neutral-400`}>{fmtIntBR(totals.impressions)}</td>;
+            case 'clicks':
+                return <td key={colId} className={`${cls} text-neutral-400`}>{fmtIntBR(totals.clicks)}</td>;
+            case 'cpc':
+                return <td key={colId} className={`${cls} text-neutral-400`}>{fmtCurrency(totalCPC)}</td>;
+            case 'cost':
+                return <td key={colId} className={`${cls} text-rose-400`}>{fmtCurrency(totals.cost)}</td>;
+            case 'conversions':
+                return <td key={colId} className={`${cls} text-neutral-400`}>{fmtDecimal(totals.conversions)}</td>;
+            case 'revenue':
+                return <td key={colId} className={`${cls} text-emerald-400/80`}>{fmtCurrency(totals.conversion_value)}</td>;
+            case 'profit':
+                return <td key={colId} className={`${cls} ${totals.profit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{totals.profit >= 0 ? '+' : ''}{fmtCurrency(totals.profit)}</td>;
+            case 'roi':
+                return <td key={colId} className={`${cls} ${totalROI >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{fmtPercent(totalROI)}</td>;
+            default:
+                return <td key={colId} className="px-4 py-3" />;
+        }
+    }
+
+    // ─── Ordered columns (resolved from state) ────────────────────────────────
+    const orderedCols = useMemo(
+        () => columnOrder.map(id => COL_MAP[id]).filter(Boolean),
+        [columnOrder]
+    );
+
+    // ─── Render ───────────────────────────────────────────────────────────────
     return (
         <div className="mt-6">
             {/* ─── Filter Panel ──────────────────────────────────────────────── */}
@@ -271,33 +532,18 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                     }
                 </div>
 
-                {/* Sort Bar + Threshold Filters */}
-                <div className="px-4 py-2.5 flex items-start gap-6 flex-wrap">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[9px] font-semibold tracking-widest text-neutral-600 uppercase shrink-0">Ordenar</span>
-                        {SORT_OPTIONS.map(opt => (
-                            <button
-                                key={opt.key}
-                                onClick={() => setSortKey(opt.key)}
-                                className={`text-[9px] px-2.5 py-1 rounded border font-bold transition-all ${sortKey === opt.key ? 'border-violet-700 text-violet-300 bg-violet-950/60 scale-105' : 'border-neutral-800 text-neutral-600 hover:text-neutral-400 hover:border-neutral-700'}`}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[9px] font-semibold tracking-widest text-neutral-600 uppercase shrink-0">Mostrar só</span>
-                        {THRESHOLD_OPTIONS.map(opt => (
-                            <button
-                                key={opt.key}
-                                onClick={() => toggleThreshold(opt.key)}
-                                className={`text-[9px] px-2.5 py-1 rounded border font-bold transition-all ${thresholdKey === opt.key ? 'border-amber-700 text-amber-300 bg-amber-950/60 scale-105' : 'border-neutral-800 text-neutral-600 hover:text-neutral-400 hover:border-neutral-700'}`}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
-                    </div>
+                {/* Threshold Filters */}
+                <div className="px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                    <span className="text-[9px] font-semibold tracking-widest text-neutral-600 uppercase shrink-0">Mostrar só</span>
+                    {THRESHOLD_OPTIONS.map(opt => (
+                        <button
+                            key={opt.key}
+                            onClick={() => toggleThreshold(opt.key)}
+                            className={`text-[9px] px-2.5 py-1 rounded border font-bold transition-all ${thresholdKey === opt.key ? 'border-amber-700 text-amber-300 bg-amber-950/60 scale-105' : 'border-neutral-800 text-neutral-600 hover:text-neutral-400 hover:border-neutral-700'}`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -309,14 +555,21 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                         : <>{filtered.length} de {metrics.length}&nbsp;<span className="text-amber-600/80">· {hiddenCount} ocultas pelos filtros</span></>
                     }
                 </span>
-                {isFiltered && (
-                    <button
-                        onClick={clearAll}
-                        className="text-[9px] font-bold text-neutral-600 hover:text-neutral-300 transition-colors border border-neutral-800 hover:border-neutral-600 px-2 py-0.5 rounded"
-                    >
-                        Limpar filtros ×
-                    </button>
-                )}
+                <div className="flex items-center gap-3">
+                    {sortCol !== 'profit' || sortDir !== 'desc' ? (
+                        <span className="text-[9px] font-mono text-violet-500/70">
+                            Ordenado por: {COL_MAP[sortCol]?.label} {sortDir === 'desc' ? '▼' : '▲'}
+                        </span>
+                    ) : null}
+                    {(isFiltered || sortCol !== 'profit' || sortDir !== 'desc') && (
+                        <button
+                            onClick={clearAll}
+                            className="text-[9px] font-bold text-neutral-600 hover:text-neutral-300 transition-colors border border-neutral-800 hover:border-neutral-600 px-2 py-0.5 rounded"
+                        >
+                            Resetar ×
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* ─── Table ─────────────────────────────────────────────────────── */}
@@ -325,129 +578,67 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                     <h2 className="text-[10px] font-semibold tracking-widest text-neutral-400 uppercase">Operações — Tabela Completa</h2>
                     <div className="flex items-center gap-3 text-[9px] font-mono text-neutral-700">
                         <span>{filtered.length} linhas</span>
-                        {isFiltered && <span className="text-amber-700">filtrado</span>}
+                        <span className="text-neutral-800">|</span>
+                        <span className="text-neutral-600">⇅ clique p/ ordenar · ⬌ arraste p/ mover</span>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left whitespace-nowrap">
+                        {/* ─── THEAD (dynamic column order) ───────────────────── */}
                         <thead className="bg-neutral-900/30">
                             <tr>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase border-b border-neutral-800 min-w-[220px]">Conta / Campanha</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-300 uppercase border-b border-neutral-800 min-w-[150px]">Perf. (ROI%)</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Orçamento</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-center border-b border-neutral-800">Status</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Cli/Conv.</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Impr.</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Cliques</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">CPC méd.</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Custo</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">% 1ª pos</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">% Sup</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Parc.IS</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Conv.</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Break-even</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Custo/Conv.</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">Receita</th>
-                                <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-neutral-200 uppercase text-right border-b border-neutral-800">Lucro Net</th>
-                                <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-neutral-200 uppercase text-right border-b border-neutral-800">ROI %</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">CPA des.</th>
-                                <th className="px-4 py-3 text-[9px] font-semibold tracking-widest text-neutral-600 uppercase text-right border-b border-neutral-800">CPA md.</th>
+                                {orderedCols.map(col => {
+                                    const isSorted = sortCol === col.id;
+                                    const arrow = isSorted ? sortDir : null;
+                                    const isDragOver = dragOverId === col.id;
+                                    const textAlign = col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left';
+
+                                    return (
+                                        <th
+                                            key={col.id}
+                                            draggable
+                                            onDragStart={() => handleDragStart(col.id)}
+                                            onDragOver={(e) => handleDragOver(e, col.id)}
+                                            onDrop={handleDrop}
+                                            onDragEnd={handleDragEnd}
+                                            onClick={() => handleHeaderClick(col.id)}
+                                            className={[
+                                                'px-4 py-3 text-[9px] tracking-widest uppercase border-b border-neutral-800 select-none transition-all',
+                                                col.bold ? 'font-bold text-neutral-200' : 'font-semibold text-neutral-600',
+                                                col.sortable ? 'cursor-pointer hover:text-neutral-300 hover:bg-neutral-800/30' : 'cursor-grab',
+                                                isSorted ? 'bg-neutral-800/20 text-neutral-300' : '',
+                                                isDragOver ? 'border-l-2 border-l-violet-500' : '',
+                                                textAlign,
+                                            ].join(' ')}
+                                            style={{ minWidth: col.minWidth, cursor: 'grab' }}
+                                        >
+                                            <span className="inline-flex items-center gap-0.5">
+                                                {col.label}
+                                                {col.sortable && <SortArrow dir={arrow} />}
+                                            </span>
+                                        </th>
+                                    );
+                                })}
                             </tr>
                         </thead>
+
+                        {/* ─── TBODY (dynamic column order) ───────────────────── */}
                         <tbody className="divide-y divide-neutral-800/50">
                             {filtered.map((metric) => {
-                                const s = metric._s;
-                                const conversions = metric.conversions ?? 0;
-                                const clicksPerConv = conversions > 0 ? metric.clicks / conversions : 0;
-                                const avgCpc = metric.clicks > 0 ? metric.cost / metric.clicks : 0;
-                                const costPerConv = conversions > 0 ? metric.cost / conversions : 0;
-                                const showMarginBar = s.extractedCommission > 0 && conversions === 0 && metric.cost > 0;
-                                const consumption = showMarginBar ? (metric.cost / s.extractedCommission) * 100 : 0;
-                                const breakeven = conversions === 0 && s.estimatedCommission > 0 && metric.cost > 0
-                                    ? Math.ceil(metric.cost / s.estimatedCommission) : null;
                                 const isSelected = selectedCampaign === metric.campaign_name;
-                                const sparkline = sparklineData?.[metric.campaign_name];
-
                                 return (
                                     <tr
                                         key={metric.id}
-                                        className={`transition-colors hover:bg-neutral-800/40 group ${isSelected ? 'bg-emerald-500/8 border-l-[3px] border-l-emerald-500' : s.rowStyle}`}
+                                        className={`transition-colors hover:bg-neutral-800/40 group ${isSelected ? 'bg-emerald-500/8 border-l-[3px] border-l-emerald-500' : metric._s.rowStyle}`}
                                     >
-                                        {/* Campaign name + sparkline + margin bar */}
-                                        <td className="px-4 py-2.5 pl-3">
-                                            <div className="flex flex-col gap-0.5">
-                                                {metric.account
-                                                    ? <span className="text-[9px] uppercase tracking-wider text-neutral-600">{metric.account.name} <span className="text-neutral-800">|</span> {metric.account.google_ads_account_id}</span>
-                                                    : <span className="text-[9px] uppercase tracking-wider text-neutral-700">Conta Não Vinculada</span>
-                                                }
-                                                <div className="flex items-center gap-2">
-                                                    <a
-                                                        href={`?filter=${currentFilter || 'today'}&campaign=${encodeURIComponent(metric.campaign_name)}`}
-                                                        className="font-mono text-[11px] text-neutral-300 group-hover:text-emerald-400 transition-colors hover:underline decoration-emerald-500/50 underline-offset-4 truncate max-w-[180px]"
-                                                        title={metric.campaign_name}
-                                                    >
-                                                        {metric.campaign_name}
-                                                    </a>
-                                                    {sparkline && <Sparkline data={sparkline} />}
-                                                </div>
-                                                {showMarginBar && <MarginBar consumption={consumption} commission={s.extractedCommission} />}
-                                            </div>
-                                        </td>
-
-                                        {/* Performance Bar */}
-                                        <td className="px-4 py-2.5">
-                                            <PerfBar roi={s.roi} maxAbsRoi={maxAbsRoi} barColor={s.barColor} />
-                                        </td>
-
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{metric.budget ? fmtCurrency(metric.budget) : '—'}</td>
-
-                                        {/* Status badge */}
-                                        <td className="px-4 py-2.5 text-center">
-                                            <div className="flex flex-col items-center gap-1">
-                                                <span className={`text-[9px] uppercase tracking-widest font-bold px-2 py-0.5 rounded border ${s.badgeStyle}`}>{s.label}</span>
-                                                {conversions === 0 && s.estimatedCommission > 0 && metric.cost > 0 && (
-                                                    <span className="text-[8px] font-mono text-neutral-600">{fmtCurrency(metric.cost)}/{fmtCurrency(s.estimatedCommission)}</span>
-                                                )}
-                                            </div>
-                                        </td>
-
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{fmtDecimal(clicksPerConv)}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{metric.impressions ? fmtIntBR(metric.impressions) : '—'}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{fmtIntBR(metric.clicks)}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{fmtCurrency(avgCpc)}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-rose-400/70">{fmtCurrency(metric.cost)}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{metric.search_absolute_top_impression_share ? fmtPercent(metric.search_absolute_top_impression_share) : '—'}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{metric.search_top_impression_share ? fmtPercent(metric.search_top_impression_share) : '—'}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{metric.search_impression_share ? fmtPercent(metric.search_impression_share) : '—'}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{conversions > 0 ? fmtDecimal(conversions) : '—'}</td>
-
-                                        {/* Breakeven */}
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px]">
-                                            {conversions > 0
-                                                ? <span className="text-emerald-500">✓</span>
-                                                : breakeven !== null
-                                                    ? <span className="text-orange-400 font-bold">{breakeven} conv.</span>
-                                                    : <span className="text-neutral-700">—</span>
-                                            }
-                                        </td>
-
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{fmtCurrency(costPerConv)}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-emerald-400/70">{fmtCurrency(metric.conversion_value)}</td>
-                                        <td className={`px-4 py-2.5 text-right font-mono text-[11px] font-bold ${metric.profit > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                                            {metric.profit > 0 ? '+' : ''}{fmtCurrency(metric.profit)}
-                                        </td>
-                                        <td className={`px-4 py-2.5 text-right font-mono text-[11px] font-bold ${metric.profit > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                                            {fmtPercent(s.roi)}
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{metric.target_cpa ? fmtCurrency(metric.target_cpa) : '—'}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-[11px] text-neutral-500">{metric.avg_target_cpa ? fmtCurrency(metric.avg_target_cpa) : '—'}</td>
+                                        {orderedCols.map(col => renderCell(col.id, metric))}
                                     </tr>
                                 );
                             })}
 
                             {filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan={20} className="px-6 py-12 text-center text-neutral-700 font-mono text-xs">
+                                    <td colSpan={orderedCols.length} className="px-6 py-12 text-center text-neutral-700 font-mono text-xs">
                                         {metrics.length > 0
                                             ? '[ Nenhuma campanha corresponde aos filtros ativos ]'
                                             : '[ Aguardando telemetria do Motor de Anúncios ]'
@@ -457,41 +648,11 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                             )}
                         </tbody>
 
-                        {/* ─── Totals Footer ─────────────────────────────────── */}
+                        {/* ─── TFOOT (dynamic column order) ───────────────────── */}
                         {filtered.length > 0 && (
                             <tfoot>
                                 <tr className="bg-neutral-900/60 border-t-2 border-neutral-700">
-                                    <td className="px-4 py-3 pl-3 text-[10px] font-bold tracking-widest text-neutral-400 uppercase">
-                                        Total ({filtered.length})
-                                    </td>
-                                    {/* Perf bar — total ROI */}
-                                    <td className="px-4 py-3">
-                                        <span className={`text-[10px] font-mono font-bold ${totalROI >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                                            {totalROI >= 0 ? '+' : ''}{totalROI.toFixed(0)}%
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3" /> {/* Budget */}
-                                    <td className="px-4 py-3" /> {/* Status */}
-                                    <td className="px-4 py-3" /> {/* Cli/Conv */}
-                                    <td className="px-4 py-3 text-right font-mono text-[10px] font-bold text-neutral-400">{fmtIntBR(totals.impressions)}</td>
-                                    <td className="px-4 py-3 text-right font-mono text-[10px] font-bold text-neutral-400">{fmtIntBR(totals.clicks)}</td>
-                                    <td className="px-4 py-3 text-right font-mono text-[10px] font-bold text-neutral-400">{fmtCurrency(totalCPC)}</td>
-                                    <td className="px-4 py-3 text-right font-mono text-[10px] font-bold text-rose-400">{fmtCurrency(totals.cost)}</td>
-                                    <td className="px-4 py-3" /> {/* % 1ª pos */}
-                                    <td className="px-4 py-3" /> {/* % Sup */}
-                                    <td className="px-4 py-3" /> {/* Parc.IS */}
-                                    <td className="px-4 py-3 text-right font-mono text-[10px] font-bold text-neutral-400">{fmtDecimal(totals.conversions)}</td>
-                                    <td className="px-4 py-3" /> {/* Breakeven */}
-                                    <td className="px-4 py-3" /> {/* Custo/Conv */}
-                                    <td className="px-4 py-3 text-right font-mono text-[10px] font-bold text-emerald-400/80">{fmtCurrency(totals.conversion_value)}</td>
-                                    <td className={`px-4 py-3 text-right font-mono text-[10px] font-bold ${totals.profit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                                        {totals.profit >= 0 ? '+' : ''}{fmtCurrency(totals.profit)}
-                                    </td>
-                                    <td className={`px-4 py-3 text-right font-mono text-[10px] font-bold ${totalROI >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                                        {fmtPercent(totalROI)}
-                                    </td>
-                                    <td className="px-4 py-3" /> {/* CPA des */}
-                                    <td className="px-4 py-3" /> {/* CPA md */}
+                                    {orderedCols.map(col => renderFooterCell(col.id))}
                                 </tr>
                             </tfoot>
                         )}

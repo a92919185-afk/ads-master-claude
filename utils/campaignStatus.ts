@@ -47,7 +47,7 @@ export const STATUS_PILL: Record<string, string> = {
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
 function extractCommission(campaignName: string, targetCpa?: number, conversions?: number, conversionValue?: number): { extracted: number; estimated: number } {
-    const nameMatch = campaignName.match(/\$(\d+(\.\d+)?)/);
+    const nameMatch = campaignName.match(/\$\s*(\d+(\.\d+)?)/);
     const extracted = nameMatch ? parseFloat(nameMatch[1]) : 0;
     const estimated = extracted > 0
         ? extracted
