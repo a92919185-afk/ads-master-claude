@@ -125,14 +125,91 @@ function Sparkline({ data }: { data: number[] }) {
     if (!data || data.length < 2) return null;
     const min = Math.min(...data), max = Math.max(...data);
     const range = max - min || 1;
-    const W = 52, H = 18;
-    const points = data
-        .map((v, i) => `${(i / (data.length - 1)) * W},${H - ((v - min) / range) * H}`)
-        .join(' ');
-    const color = data[data.length - 1] > 0 ? '#10b981' : data[data.length - 1] < 0 ? '#f43f5e' : '#525252';
+    const W = 60, H = 22;
+
+    const GREEN = '#10b981';
+    const RED = '#f43f5e';
+    const GREY = '#525252';
+
+    // Compute pixel coordinates for each data point
+    const coords = data.map((v, i) => ({
+        x: (i / (data.length - 1)) * W,
+        y: H - ((v - min) / range) * H,
+        val: v,
+    }));
+
+    // Zero-line Y position (clamped within the SVG)
+    const zeroY = H - ((0 - min) / range) * H;
+    const allPositive = min >= 0;
+    const allNegative = max <= 0;
+
+    // Build segments between each pair of consecutive points
+    // Each segment can be: fully green, fully red, or split at the zero crossing
+    const segments: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+    for (let i = 0; i < coords.length - 1; i++) {
+        const a = coords[i], b = coords[i + 1];
+        if ((a.val >= 0 && b.val >= 0) || (a.val > 0 && b.val === 0)) {
+            segments.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, color: GREEN });
+        } else if ((a.val <= 0 && b.val <= 0) || (a.val < 0 && b.val === 0)) {
+            segments.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, color: RED });
+        } else {
+            // Crossing zero — find the interpolated crossing point
+            const t = a.val / (a.val - b.val); // 0..1
+            const cx = a.x + t * (b.x - a.x);
+            const cy = a.y + t * (b.y - a.y);
+            if (a.val > 0) {
+                segments.push({ x1: a.x, y1: a.y, x2: cx, y2: cy, color: GREEN });
+                segments.push({ x1: cx, y1: cy, x2: b.x, y2: b.y, color: RED });
+            } else {
+                segments.push({ x1: a.x, y1: a.y, x2: cx, y2: cy, color: RED });
+                segments.push({ x1: cx, y1: cy, x2: b.x, y2: b.y, color: GREEN });
+            }
+        }
+    }
+
+    // Build filled area paths (green above zero, red below zero)
+    const greenFillPts: string[] = [];
+    const redFillPts: string[] = [];
+    for (const seg of segments) {
+        const arr = seg.color === GREEN ? greenFillPts : redFillPts;
+        if (arr.length === 0) arr.push(`${seg.x1},${zeroY}`, `${seg.x1},${seg.y1}`);
+        arr.push(`${seg.x2},${seg.y2}`);
+    }
+    if (greenFillPts.length > 0) greenFillPts.push(`${greenFillPts[greenFillPts.length - 1].split(',')[0]},${zeroY}`);
+    if (redFillPts.length > 0) redFillPts.push(`${redFillPts[redFillPts.length - 1].split(',')[0]},${zeroY}`);
+
     return (
-        <svg width={W} height={H} className="overflow-visible shrink-0 opacity-70">
-            <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        <svg width={W} height={H} className="overflow-visible shrink-0">
+            {/* Zero reference line */}
+            {!allPositive && !allNegative && (
+                <line x1={0} y1={zeroY} x2={W} y2={zeroY} stroke="#404040" strokeWidth="0.5" strokeDasharray="2,2" />
+            )}
+            {/* Filled areas */}
+            {greenFillPts.length > 2 && (
+                <polygon points={greenFillPts.join(' ')} fill={GREEN} opacity={0.15} />
+            )}
+            {redFillPts.length > 2 && (
+                <polygon points={redFillPts.join(' ')} fill={RED} opacity={0.15} />
+            )}
+            {/* Colored line segments */}
+            {segments.map((seg, i) => (
+                <line
+                    key={i}
+                    x1={seg.x1} y1={seg.y1}
+                    x2={seg.x2} y2={seg.y2}
+                    stroke={seg.color}
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                />
+            ))}
+            {/* Endpoint dot */}
+            <circle
+                cx={coords[coords.length - 1].x}
+                cy={coords[coords.length - 1].y}
+                r={2}
+                fill={data[data.length - 1] > 0 ? GREEN : data[data.length - 1] < 0 ? RED : GREY}
+            />
         </svg>
     );
 }
