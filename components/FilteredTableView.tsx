@@ -259,6 +259,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
     const [productFilter, setProductFilter] = useState<string | null>(null);
     const [thresholdKey, setThresholdKey] = useState<string | null>(null);
+    const [adsStatusFilter, setAdsStatusFilter] = useState<string | null>(null);
 
     // Column sort state
     const [sortCol, setSortCol] = useState<string>('profit');
@@ -374,6 +375,16 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
         return c;
     }, [enriched]);
 
+    // Ads status counts (ENABLED/PAUSED from Google Ads)
+    const adsStatusCounts = useMemo(() => {
+        const c: Record<string, number> = {};
+        enriched.forEach(m => {
+            const raw = (m.status || 'UNKNOWN').toUpperCase();
+            c[raw] = (c[raw] || 0) + 1;
+        });
+        return c;
+    }, [enriched]);
+
     const productGroups = useMemo(() => {
         const g: Record<string, { profit: number; cost: number; count: number }> = {};
         enriched.forEach(m => {
@@ -393,6 +404,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
         let r = [...enriched];
         if (statusFilter) r = r.filter(m => m._s.label === statusFilter);
         if (productFilter) r = r.filter(m => extractProductName(m.campaign_name) === productFilter);
+        if (adsStatusFilter) r = r.filter(m => (m.status || 'UNKNOWN').toUpperCase() === adsStatusFilter);
         if (thresholdKey) {
             const opt = THRESHOLD_OPTIONS.find(o => o.key === thresholdKey);
             if (opt) r = r.filter(opt.fn);
@@ -412,10 +424,10 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
         });
 
         return r;
-    }, [enriched, statusFilter, productFilter, thresholdKey, sortCol, sortDir]);
+    }, [enriched, statusFilter, productFilter, adsStatusFilter, thresholdKey, sortCol, sortDir]);
 
     const hiddenCount = metrics.length - filtered.length;
-    const isFiltered = !!(statusFilter || productFilter || thresholdKey);
+    const isFiltered = !!(statusFilter || productFilter || thresholdKey || adsStatusFilter);
 
     const maxAbsRoi = useMemo(
         () => Math.max(...filtered.map(m => Math.abs(m._s.roi)), 0.01),
@@ -446,6 +458,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
         setStatusFilter(null);
         setProductFilter(null);
         setThresholdKey(null);
+        setAdsStatusFilter(null);
         setSortCol('profit');
         setSortDir('desc');
     };
@@ -453,6 +466,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
     const toggleStatus = (s: string) => setStatusFilter(v => v === s ? null : s);
     const toggleProduct = (p: string) => setProductFilter(v => v === p ? null : p);
     const toggleThreshold = (k: string) => setThresholdKey(v => v === k ? null : k);
+    const toggleAdsStatus = (s: string) => setAdsStatusFilter(v => v === s ? null : s);
 
     // ─── Cell renderer (per column ID) ────────────────────────────────────────
     function renderCell(colId: string, metric: EnrichedMetric): React.ReactNode {
@@ -642,6 +656,33 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                         }
                     </div>
                 )}
+
+                {/* Ads Status Pills (Google Ads: Ativa/Pausada) */}
+                <div className="px-4 py-2.5 border-b border-neutral-800/50 flex items-center gap-2 flex-wrap">
+                    <span className="text-[9px] font-semibold tracking-widest text-neutral-600 uppercase shrink-0 w-14">Ads</span>
+                    <button
+                        onClick={() => setAdsStatusFilter(null)}
+                        className={`text-[9px] px-2.5 py-1 rounded border font-bold transition-all ${!adsStatusFilter ? 'border-neutral-500 text-neutral-200 bg-neutral-800' : 'border-neutral-800 text-neutral-600 hover:text-neutral-400 hover:border-neutral-700'}`}
+                    >
+                        TODOS · {metrics.length}
+                    </button>
+                    {(['ENABLED', 'PAUSED', 'REMOVED'] as const)
+                        .filter(s => (adsStatusCounts[s] || 0) > 0)
+                        .map(s => {
+                            const isActive = adsStatusFilter === s;
+                            const info = ADS_STATUS_MAP[s];
+                            return (
+                                <button
+                                    key={s}
+                                    onClick={() => toggleAdsStatus(s)}
+                                    className={`text-[9px] px-2.5 py-1 rounded border font-bold transition-all flex items-center gap-1 ${info.style} ${isActive ? 'ring-1 ring-current ring-opacity-40 scale-105 opacity-100' : 'opacity-55 hover:opacity-100'}`}
+                                >
+                                    {info.label}&nbsp;·&nbsp;{adsStatusCounts[s]}
+                                </button>
+                            );
+                        })
+                    }
+                </div>
 
                 {/* Status Pills */}
                 <div className="px-4 py-2.5 border-b border-neutral-800/50 flex items-center gap-2 flex-wrap">
