@@ -12,11 +12,12 @@ import { extractProductName } from "@/utils/helpers";
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string; campaign?: string; view?: string; from?: string; to?: string; days?: string; anchor?: string }> }) {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ filter?: string; campaign?: string; view?: string; from?: string; to?: string; days?: string; anchor?: string; show_archived?: string }> }) {
   const params = await searchParams;
   const filterKey = params?.filter || 'today';
   const selectedCampaignName = params?.campaign;
   const viewMode = params?.view === 'product' ? 'product' : 'campaign';
+  const showArchived = params?.show_archived === 'true';
 
   // ─── Date resolution — UTC-noon strategy to avoid Vercel UTC edge issues ───
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -124,6 +125,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const startStr = startD.toISOString().split('T')[0];
   const endStr = endD.toISOString().split('T')[0];
 
+  // Fetch archived campaign names
+  const { data: archivedData } = await supabase.from('archived_campaigns').select('campaign_name');
+  const archivedSet = new Set((archivedData || []).map((a: any) => a.campaign_name as string));
+  const archivedCount = archivedSet.size;
+
   const { data: metrics, error } = await supabase
     .from('campaign_metrics')
     .select(`*, account:accounts(name, google_ads_account_id)`)
@@ -134,7 +140,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   if (error) console.error('Error fetching metrics:', error);
 
-  const campaignMetrics = metrics || [];
+  // show_archived=true shows ONLY archived; default hides archived
+  const campaignMetrics = (metrics || []).filter((m: any) =>
+    showArchived ? archivedSet.has(m.campaign_name) : !archivedSet.has(m.campaign_name)
+  );
 
   const filteredMetrics = selectedCampaignName
     ? campaignMetrics.filter((m: any) => m.campaign_name === selectedCampaignName)
@@ -308,14 +317,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1.5">
               <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)] shrink-0" />
               <h1 className="text-2xl font-semibold tracking-tight text-neutral-100 whitespace-nowrap">
-                {selectedCampaignName ? 'Campanha: ' : 'AdsMaster'}
+                {showArchived ? 'Campanhas Arquivadas' : selectedCampaignName ? 'Campanha: ' : 'AdsMaster'}
               </h1>
               {selectedCampaignName && (
                 <span className="text-lg font-mono text-emerald-400 break-all">{selectedCampaignName}</span>
               )}
             </div>
             <p className="text-[11px] font-medium tracking-widest text-neutral-600 uppercase">
-              {viewMode === 'product' ? 'Visão por Produto' : 'Terminal de Lucro Consolidado'}
+              {showArchived ? 'Gerenciador de Arquivadas' : viewMode === 'product' ? 'Visão por Produto' : 'Terminal de Lucro Consolidado'}
               {selectedCampaignName && (
                 <a href={`/?filter=${filterKey}`} className="ml-3 text-[10px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded transition-colors normal-case">
                   Limpar ×
@@ -324,13 +333,28 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <ViewToggle currentView={viewMode} currentFilter={filterKey} />
-            <DashboardFilters currentFilter={filterKey} />
+            {!showArchived && <ViewToggle currentView={viewMode} currentFilter={filterKey} />}
+            {!showArchived && <DashboardFilters currentFilter={filterKey} />}
+            {showArchived ? (
+              <a
+                href={`/?filter=${filterKey}`}
+                className="text-[10px] font-bold tracking-widest uppercase px-3 py-1.5 rounded border border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:text-white transition-colors"
+              >
+                ← Voltar ao Dashboard
+              </a>
+            ) : archivedCount > 0 ? (
+              <a
+                href={`/?filter=${filterKey}&show_archived=true`}
+                className="text-[10px] font-bold tracking-widest uppercase px-3 py-1.5 rounded border border-neutral-800 text-neutral-600 hover:border-amber-700 hover:text-amber-400 transition-colors"
+              >
+                Arquivadas · {archivedCount}
+              </a>
+            ) : null}
           </div>
         </div>
 
         {/* ─── Summary Cards (6 KPIs) ──────────────────────────────────────── */}
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+        {!showArchived && (<div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           <MetricHeaderCard
             title="Lucro Líquido"
             value={totalProfit}
@@ -373,31 +397,31 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             previousValue={prevClicks}
             icon="click"
           />
-        </div>
+        </div>)}
 
         {/* ─── Performance Chart ────────────────────────────────────────────── */}
-        <PerformanceChart
+        {!showArchived && <PerformanceChart
           metrics={filteredMetrics}
           dateRange={{ start: startStr, end: endStr }}
           commissionValue={maxCommission}
-        />
+        />}
 
         {/* ─── Command Center Grid ──────────────────────────────────────────── */}
-        <CampaignStatusGrid
+        {!showArchived && <CampaignStatusGrid
           campaigns={displayMetrics}
           currentFilter={filterKey}
           isProductView={viewMode === 'product'}
-        />
+        />}
 
         {/* ─── Leaderboard ─────────────────────────────────────────────────── */}
-        <Leaderboard
+        {!showArchived && <Leaderboard
           campaigns={displayMetrics}
           currentFilter={filterKey}
           isProductView={viewMode === 'product'}
-        />
+        />}
 
         {/* ─── Hourly Heatmap ───────────────────────────────────────────────── */}
-        {heatmapDates.length > 0 && (
+        {!showArchived && heatmapDates.length > 0 && (
           <HourlyHeatmap
             dates={heatmapDates}
             grid={heatmapGrid}
@@ -412,12 +436,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           selectedCampaign={selectedCampaignName}
           currentFilter={filterKey}
           sparklineData={sparklineData}
+          showArchived={showArchived}
+          archivedCount={archivedCount}
         />
 
         {campaignMetrics.length === 0 && !error && (
           <div className="mt-10 text-center py-16 border border-dashed border-neutral-800 rounded-2xl">
             <p className="text-neutral-600 font-mono text-xs uppercase tracking-widest">
-              [ Nenhuma Telemetria Detectada no Período ]
+              {showArchived ? '[ Nenhuma campanha arquivada ]' : '[ Nenhuma Telemetria Detectada no Período ]'}
             </p>
             <p className="text-neutral-700 text-xs mt-2">
               Aguardando envio de dados do Script do Google Ads...

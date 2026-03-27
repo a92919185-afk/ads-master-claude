@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { computeStatus, STATUS_ORDER, STATUS_DISPLAY_ORDER, STATUS_PILL } from '@/utils/campaignStatus';
 import type { StatusInfo } from '@/utils/campaignStatus';
 import { fmtCurrency, fmtDecimal, fmtPercent, fmtIntBR } from '@/utils/formatters';
@@ -34,6 +35,8 @@ interface FilteredTableViewProps {
     selectedCampaign?: string;
     currentFilter?: string;
     sparklineData?: Record<string, number[]>;
+    showArchived?: boolean;
+    archivedCount?: number;
 }
 
 // ─── Column Definitions ───────────────────────────────────────────────────────
@@ -255,7 +258,34 @@ function SortArrow({ dir }: { dir: 'asc' | 'desc' | null }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sparklineData }: FilteredTableViewProps) {
+export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sparklineData, showArchived, archivedCount }: FilteredTableViewProps) {
+    const router = useRouter();
+    const [archiving, setArchiving] = useState<string | null>(null);
+
+    const handleArchive = async (campaignName: string) => {
+        setArchiving(campaignName);
+        try {
+            await fetch('/api/archive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ campaign_name: campaignName }),
+            });
+            router.refresh();
+        } finally { setArchiving(null); }
+    };
+
+    const handleUnarchive = async (campaignName: string) => {
+        setArchiving(campaignName);
+        try {
+            await fetch('/api/archive', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ campaign_name: campaignName }),
+            });
+            router.refresh();
+        } finally { setArchiving(null); }
+    };
+
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
     const [productFilter, setProductFilter] = useState<string | null>(null);
     const [thresholdKey, setThresholdKey] = useState<string | null>(null);
@@ -768,6 +798,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                             {orderedCols.map(col => (
                                 <col key={col.id} style={{ width: columnWidths[col.id] || col.defaultWidth || 100 }} />
                             ))}
+                            <col style={{ width: 46 }} />
                         </colgroup>
 
                         {/* ─── THEAD (dynamic column order + resize handles) ──── */}
@@ -814,7 +845,10 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                                         </th>
                                     );
                                 })}
-                            </tr>
+                                                            <th className="px-2 py-3 text-[9px] tracking-widest uppercase border-b border-neutral-800 text-neutral-700 text-center w-[46px]">
+                                    {showArchived ? "Ativar" : "Arq."}
+                                </th>
+</tr>
                         </thead>
 
                         {/* ─── TBODY (dynamic column order) ───────────────────── */}
@@ -827,6 +861,27 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                                         className={`transition-colors hover:bg-neutral-800/40 group ${isSelected ? 'bg-emerald-500/8 border-l-[3px] border-l-emerald-500' : metric._s.rowStyle}`}
                                     >
                                         {orderedCols.map(col => renderCell(col.id, metric))}
+                                    <td className="px-1 py-2.5 text-center">
+                                        {showArchived ? (
+                                            <button
+                                                onClick={() => handleUnarchive(metric.campaign_name)}
+                                                disabled={archiving === metric.campaign_name}
+                                                title="Desarquivar campanha"
+                                                className="text-[9px] px-1.5 py-0.5 rounded border border-amber-800/60 text-amber-500 hover:bg-amber-950/40 transition-colors disabled:opacity-40"
+                                            >
+                                                {archiving === metric.campaign_name ? '...' : '↩'}
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => handleArchive(metric.campaign_name)}
+                                                disabled={archiving === metric.campaign_name}
+                                                title="Arquivar campanha (ocultar dos relatórios)"
+                                                className="opacity-0 group-hover:opacity-100 text-[9px] px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-500 hover:border-rose-800/60 hover:text-rose-400 transition-all disabled:opacity-40"
+                                            >
+                                                {archiving === metric.campaign_name ? '...' : '⤓'}
+                                            </button>
+                                        )}
+                                    </td>
                                     </tr>
                                 );
                             })}
@@ -848,6 +903,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                             <tfoot>
                                 <tr className="bg-neutral-900/60 border-t-2 border-neutral-700">
                                     {orderedCols.map(col => renderFooterCell(col.id))}
+                                    <td className="px-2 py-3" />
                                 </tr>
                             </tfoot>
                         )}
