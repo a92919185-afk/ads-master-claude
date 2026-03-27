@@ -45,3 +45,15 @@ ALTER TABLE public.campaign_metrics ENABLE ROW LEVEL SECURITY;
 -- For now, allowing all reading if authenticated with standard roles
 CREATE POLICY "Allow read access to authenticated users" ON public.accounts FOR SELECT USING (true);
 CREATE POLICY "Allow read access to authenticated users" ON public.campaign_metrics FOR SELECT USING (true);
+
+-- ─── Archived Campaigns ────────────────────────────────────────────────────
+-- Stores campaign names that should be hidden from all reports.
+-- Insert a row to archive, delete it to unarchive.
+CREATE TABLE IF NOT EXISTS public.archived_campaigns (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  campaign_name text NOT NULL UNIQUE,
+  archived_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.archived_campaigns ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read access" ON public.archived_campaigns FOR SELECT USING (true);
