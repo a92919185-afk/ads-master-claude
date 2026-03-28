@@ -71,6 +71,7 @@ const COLUMNS: ColumnDef[] = [
     { id: 'roi', label: 'ROI %', sortable: true, align: 'right', bold: true, defaultWidth: 90 },
     { id: 'target_cpa', label: 'CPA des.', sortable: true, align: 'right', defaultWidth: 90 },
     { id: 'avg_cpa', label: 'CPA md.', sortable: true, align: 'right', defaultWidth: 90 },
+    { id: 'actions', label: 'Ações', sortable: false, align: 'center', defaultWidth: 92 },
 ];
 
 const DEFAULT_ORDER = COLUMNS.map(c => c.id);
@@ -618,6 +619,59 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                 return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.target_cpa ? fmtCurrency(metric.target_cpa) : '—'}</td>;
             case 'avg_cpa':
                 return <td key={colId} className={`${cls} text-right text-neutral-500`}>{metric.avg_target_cpa ? fmtCurrency(metric.avg_target_cpa) : '—'}</td>;
+            case 'actions':
+                return (
+                    <td key={colId} className="px-1 py-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                        {showArchived ? (
+                            <button
+                                onClick={() => handleUnarchive(metric.campaign_name)}
+                                disabled={archiving === metric.campaign_name}
+                                title="Desarquivar campanha"
+                                className="text-[9px] px-1.5 py-0.5 rounded border border-amber-800/60 text-amber-500 hover:bg-amber-950/40 transition-colors disabled:opacity-40"
+                            >
+                                {archiving === metric.campaign_name ? '...' : '↩ Ativar'}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => handleArchive(metric.campaign_name)}
+                                disabled={archiving === metric.campaign_name}
+                                title="Arquivar campanha (ocultar dos relatórios)"
+                                className="text-[9px] px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-500 hover:border-amber-700/60 hover:text-amber-400 transition-all disabled:opacity-40"
+                            >
+                                {archiving === metric.campaign_name ? '...' : '⤔'}
+                            </button>
+                        )}
+                        {confirmDelete === metric.campaign_name ? (
+                            <span className="flex items-center gap-0.5">
+                                <button
+                                    onClick={() => handleDelete(metric.campaign_name)}
+                                    disabled={deleting === metric.campaign_name}
+                                    title="Confirmar exclusão permanente"
+                                    className="text-[9px] px-1 py-0.5 rounded border border-rose-700 text-rose-400 hover:bg-rose-950/40 transition-colors disabled:opacity-40"
+                                >
+                                    {deleting === metric.campaign_name ? '...' : '✓'}
+                                </button>
+                                <button
+                                    onClick={() => setConfirmDelete(null)}
+                                    className="text-[9px] px-1 py-0.5 rounded border border-neutral-700 text-neutral-500 hover:text-neutral-300 transition-colors"
+                                >
+                                    ✕
+                                </button>
+                            </span>
+                        ) : (
+                            <button
+                                onClick={() => setConfirmDelete(metric.campaign_name)}
+                                disabled={deleting === metric.campaign_name}
+                                title="Excluir campanha permanentemente"
+                                className="text-[9px] px-1.5 py-0.5 rounded border border-neutral-800 text-neutral-600 hover:border-rose-800/60 hover:text-rose-500 transition-all disabled:opacity-40"
+                            >
+                                🗑
+                            </button>
+                        )}
+                        </div>
+                    </td>
+                );
             default:
                 return <td key={colId} className="px-4 py-2.5">—</td>;
         }
@@ -649,6 +703,8 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                 return <td key={colId} className={`${cls} ${totals.profit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{totals.profit >= 0 ? '+' : ''}{fmtCurrency(totals.profit)}</td>;
             case 'roi':
                 return <td key={colId} className={`${cls} ${totalROI >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{fmtPercent(totalROI)}</td>;
+            case 'actions':
+                return <td key={colId} className="px-2 py-3" />;
             default:
                 return <td key={colId} className="px-4 py-3" />;
         }
@@ -813,7 +869,6 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                             {orderedCols.map(col => (
                                 <col key={col.id} style={{ width: columnWidths[col.id] || col.defaultWidth || 100 }} />
                             ))}
-                            <col style={{ width: 46 }} />
                         </colgroup>
 
                         {/* ─── THEAD (dynamic column order + resize handles) ──── */}
@@ -860,9 +915,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                                         </th>
                                     );
                                 })}
-                                                            <th className="px-2 py-3 text-[9px] tracking-widest uppercase border-b border-neutral-800 text-neutral-700 text-center w-[92px]">
-                                    Ações
-                                </th>
+                                                            
 </tr>
                         </thead>
 
@@ -876,56 +929,7 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                                         className={`transition-colors hover:bg-neutral-800/40 group ${isSelected ? 'bg-emerald-500/8 border-l-[3px] border-l-emerald-500' : metric._s.rowStyle}`}
                                     >
                                         {orderedCols.map(col => renderCell(col.id, metric))}
-                                    <td className="px-1 py-2.5 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                        {showArchived ? (
-                                            <button
-                                                onClick={() => handleUnarchive(metric.campaign_name)}
-                                                disabled={archiving === metric.campaign_name}
-                                                title="Desarquivar campanha"
-                                                className="text-[9px] px-1.5 py-0.5 rounded border border-amber-800/60 text-amber-500 hover:bg-amber-950/40 transition-colors disabled:opacity-40"
-                                            >
-                                                {archiving === metric.campaign_name ? '...' : '↩ Ativar'}
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => handleArchive(metric.campaign_name)}
-                                                disabled={archiving === metric.campaign_name}
-                                                title="Arquivar campanha (ocultar dos relatórios)"
-                                                className="text-[9px] px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-500 hover:border-amber-700/60 hover:text-amber-400 transition-all disabled:opacity-40"
-                                            >
-                                                {archiving === metric.campaign_name ? '...' : '⤓'}
-                                            </button>
-                                        )}
-                                        {confirmDelete === metric.campaign_name ? (
-                                            <span className="flex items-center gap-0.5">
-                                                <button
-                                                    onClick={() => handleDelete(metric.campaign_name)}
-                                                    disabled={deleting === metric.campaign_name}
-                                                    title="Confirmar exclusão permanente"
-                                                    className="text-[9px] px-1 py-0.5 rounded border border-rose-700 text-rose-400 hover:bg-rose-950/40 transition-colors disabled:opacity-40"
-                                                >
-                                                    {deleting === metric.campaign_name ? '...' : '✓'}
-                                                </button>
-                                                <button
-                                                    onClick={() => setConfirmDelete(null)}
-                                                    className="text-[9px] px-1 py-0.5 rounded border border-neutral-700 text-neutral-500 hover:text-neutral-300 transition-colors"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </span>
-                                        ) : (
-                                            <button
-                                                onClick={() => setConfirmDelete(metric.campaign_name)}
-                                                disabled={deleting === metric.campaign_name}
-                                                title="Excluir campanha permanentemente"
-                                                className="text-[9px] px-1.5 py-0.5 rounded border border-neutral-800 text-neutral-600 hover:border-rose-800/60 hover:text-rose-500 transition-all disabled:opacity-40"
-                                            >
-                                                🗑
-                                            </button>
-                                        )}
-                                        </div>
-                                    </td>
+                                    
                                     </tr>
                                 );
                             })}
@@ -947,7 +951,6 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                             <tfoot>
                                 <tr className="bg-neutral-900/60 border-t-2 border-neutral-700">
                                     {orderedCols.map(col => renderFooterCell(col.id))}
-                                    <td className="px-2 py-3" />
                                 </tr>
                             </tfoot>
                         )}
