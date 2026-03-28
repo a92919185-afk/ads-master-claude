@@ -852,8 +852,115 @@ export function FilteredTableView({ metrics, selectedCampaign, currentFilter, sp
                 </div>
             </div>
 
+            {/* ─── Mobile Card View (visible only < md) ─────────────────────────────────────── */}
+            <div className="block md:hidden space-y-2.5">
+                <div className="flex items-center justify-between px-1 py-1">
+                    <span className="text-[10px] font-mono text-neutral-600">{filtered.length} campanha{filtered.length !== 1 ? 's' : ''}</span>
+                    <span className="text-[10px] font-mono text-neutral-700">ordenado por {sortCol} {sortDir === 'desc' ? '▼' : '▲'}</span>
+                </div>
+                {filtered.length === 0 ? (
+                    <div className="py-12 text-center text-neutral-700 font-mono text-xs rounded-xl border border-neutral-800 border-dashed">
+                        {metrics.length > 0 ? '[ Nenhuma campanha corresponde aos filtros ]' : '[ Aguardando telemetria do Motor de Anúncios ]'}
+                    </div>
+                ) : filtered.map((metric) => {
+                    const conversions = metric.conversions ?? 0;
+                    const roi = metric.cost > 0 ? (metric.profit / metric.cost) * 100 : 0;
+                    const s = metric._s;
+                    const isSelected = selectedCampaign === metric.campaign_name;
+                    return (
+                        <div
+                            key={metric.id}
+                            className={`rounded-xl border overflow-hidden transition-colors ${isSelected ? 'border-emerald-500/50 bg-emerald-950/10' : 'border-neutral-800 bg-neutral-900/30'} ${s.rowStyle.includes('border-l') ? s.rowStyle : ''}`}
+                        >
+                            {/* Card Header */}
+                            <div className="px-4 py-3 flex items-start gap-3 border-b border-neutral-800/60">
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[12px] font-semibold text-neutral-100 leading-tight truncate">{metric.campaign_name}</div>
+                                    {metric.account && (
+                                        <div className="text-[10px] text-neutral-600 truncate mt-0.5">{metric.account.name}</div>
+                                    )}
+                                </div>
+                                <span className={`shrink-0 text-[9px] px-2 py-0.5 rounded-full border font-bold tracking-wide ${s.badgeStyle}`}>
+                                    {s.label}
+                                </span>
+                            </div>
+
+                            {/* Metrics 2×2 Grid */}
+                            <div className="grid grid-cols-2">
+                                <div className="px-4 py-3 border-b border-r border-neutral-800/60">
+                                    <div className="text-[9px] text-neutral-600 uppercase tracking-widest mb-1">Lucro Net</div>
+                                    <div className={`text-[15px] font-bold font-mono ${metric.profit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                                        {metric.profit >= 0 ? '+' : ''}{fmtCurrency(metric.profit)}
+                                    </div>
+                                </div>
+                                <div className="px-4 py-3 border-b border-neutral-800/60">
+                                    <div className="text-[9px] text-neutral-600 uppercase tracking-widest mb-1">ROI %</div>
+                                    <div className={`text-[15px] font-bold font-mono ${roi >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                                        {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
+                                    </div>
+                                </div>
+                                <div className="px-4 py-3 border-r border-neutral-800/60">
+                                    <div className="text-[9px] text-neutral-600 uppercase tracking-widest mb-1">Custo</div>
+                                    <div className="text-[13px] font-mono text-rose-400">{fmtCurrency(metric.cost)}</div>
+                                </div>
+                                <div className="px-4 py-3">
+                                    <div className="text-[9px] text-neutral-600 uppercase tracking-widest mb-1">Conv.</div>
+                                    <div className="text-[13px] font-mono text-neutral-300">{fmtDecimal(conversions)}</div>
+                                </div>
+                            </div>
+
+                            {/* Card Footer — Actions */}
+                            <div className="px-4 py-2.5 bg-neutral-900/50 border-t border-neutral-800/60 flex items-center gap-2 justify-end">
+                                {showArchived ? (
+                                    <button
+                                        onClick={() => handleUnarchive(metric.campaign_name)}
+                                        disabled={archiving === metric.campaign_name}
+                                        className="text-[10px] px-3 py-1.5 rounded-lg border border-amber-800/60 text-amber-400 hover:bg-amber-950/40 transition-colors disabled:opacity-40 font-medium"
+                                    >
+                                        {archiving === metric.campaign_name ? '...' : '↩ Ativar'}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => handleArchive(metric.campaign_name)}
+                                        disabled={archiving === metric.campaign_name}
+                                        className="text-[10px] px-3 py-1.5 rounded-lg border border-neutral-700 text-neutral-500 hover:border-amber-700/60 hover:text-amber-400 transition-all disabled:opacity-40 font-medium"
+                                    >
+                                        {archiving === metric.campaign_name ? '...' : '⤔ Arquivar'}
+                                    </button>
+                                )}
+                                {confirmDelete === metric.campaign_name ? (
+                                    <span className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => handleDelete(metric.campaign_name)}
+                                            disabled={deleting === metric.campaign_name}
+                                            className="text-[10px] px-3 py-1.5 rounded-lg border border-rose-700 text-rose-400 hover:bg-rose-950/40 transition-colors disabled:opacity-40 font-medium"
+                                        >
+                                            {deleting === metric.campaign_name ? '...' : '✓ Confirmar'}
+                                        </button>
+                                        <button
+                                            onClick={() => setConfirmDelete(null)}
+                                            className="text-[10px] px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-500 hover:text-neutral-300 transition-colors"
+                                        >
+                                            ✕
+                                        </button>
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => setConfirmDelete(metric.campaign_name)}
+                                        disabled={deleting === metric.campaign_name}
+                                        className="text-[10px] px-3 py-1.5 rounded-lg border border-neutral-800 text-neutral-600 hover:border-rose-800/60 hover:text-rose-500 transition-all disabled:opacity-40 font-medium"
+                                    >
+                                        🗑 Excluir
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
             {/* ─── Table ─────────────────────────────────────────────────────── */}
-            <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/20">
+            <div className="hidden md:block overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/20">
                 <div className="border-b border-neutral-800 bg-neutral-900/40 px-5 py-3 flex items-center justify-between">
                     <h2 className="text-[10px] font-semibold tracking-widest text-neutral-400 uppercase">Operações — Tabela Completa</h2>
                     <div className="flex items-center gap-3 text-[9px] font-mono text-neutral-700">

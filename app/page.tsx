@@ -309,10 +309,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-neutral-800">
-      <div className="mx-auto max-w-[1800px] p-6">
+      <div className="mx-auto max-w-[1800px] p-3 sm:p-6">
 
         {/* ─── Header ──────────────────────────────────────────────────────── */}
-        <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end border-b border-neutral-900 pb-5">
+        <div className="mb-4 sm:mb-8 flex flex-col justify-between gap-3 sm:gap-4 sm:flex-row sm:items-end border-b border-neutral-900 pb-4 sm:pb-5">
           <div>
             <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1.5">
               <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)] shrink-0" />
@@ -354,7 +354,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
 
         {/* ─── Summary Cards (6 KPIs) ──────────────────────────────────────── */}
-        {!showArchived && (<div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+        {!showArchived && (<div className="grid gap-2 sm:gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           <MetricHeaderCard
             title="Lucro Líquido"
             value={totalProfit}
